@@ -305,14 +305,14 @@ export function renderAdminPage({
 
           <div class="card">
             <div class="section-title">如何新增监听群</div>
-            <p class="section-copy">1. 把 Telegram 机器人拉进目标群或频道。2. 让群里出现一条新消息。3. 回来点刷新，就能在右侧列表里勾选分类。</p>
-            <p class="inline-help">如果一直识别不到，通常是 bot 没有读消息权限，或者群还没让 bot 真正收到过消息。</p>
+            <p class="section-copy">1. 把 Telegram bot 拉进目标群或频道。2. 让群里出现一条新消息。3. 回来点刷新，就能在右侧列表里勾选分类。</p>
+            <p class="inline-help">如果右侧一直是空的，通常有两种情况：bot 还没在这个群里真正收到过消息，或者 bot 没有读消息权限。现在你手工填过的群也会先显示出来，不用等第一条消息。</p>
           </div>
         </div>
 
         <div class="card">
           <div class="section-title">已发现的 Telegram 群聊</div>
-          <p class="section-copy">这些群是 bot 已经见过消息的群。你可以直接勾选它属于“新闻群”还是“分析师群”。</p>
+          <p class="section-copy">这里会同时显示两类群：一类是 bot 真正见过消息的群；另一类是你手工配置但 bot 还没收到首条消息的群。</p>
           <div id="chatTableWrap"></div>
         </div>
       </div>
@@ -336,6 +336,14 @@ export function renderAdminPage({
       const statusLine = document.getElementById("statusLine");
       const chatTableWrap = document.getElementById("chatTableWrap");
 
+      function escapeClientHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
       function parseCsv(value) {
         return String(value || "")
           .split(",")
@@ -358,26 +366,60 @@ export function renderAdminPage({
         return set.has(String(id)) ? "checked" : "";
       }
 
+      function getVisibleChats() {
+        const knownMap = new Map(
+          bootstrap.knownChats.map((chat) => [String(chat.id), { ...chat, isConfiguredOnly: false }]),
+        );
+
+        const configuredIds = new Set([...state.allowed, ...state.news, ...state.analyst]);
+        for (const id of configuredIds) {
+          if (!knownMap.has(id)) {
+            knownMap.set(id, {
+              id,
+              title: "手动配置的群聊",
+              username: "",
+              type: "configured",
+              lastSeenAt: "",
+              lastText: "bot 还没有在这个群里收到过新消息",
+              isConfiguredOnly: true,
+            });
+          }
+        }
+
+        return [...knownMap.values()].sort((a, b) => {
+          const aConfiguredOnly = a.isConfiguredOnly ? 1 : 0;
+          const bConfiguredOnly = b.isConfiguredOnly ? 1 : 0;
+          if (aConfiguredOnly !== bConfiguredOnly) {
+            return aConfiguredOnly - bConfiguredOnly;
+          }
+          return String(b.lastSeenAt || "").localeCompare(String(a.lastSeenAt || ""));
+        });
+      }
+
       function renderChats() {
-        if (!bootstrap.knownChats.length) {
-          chatTableWrap.innerHTML = '<p class="empty">目前还没有自动识别到任何 Telegram 群，请先让 bot 收到一条新消息。</p>';
+        const chats = getVisibleChats();
+        if (!chats.length) {
+          chatTableWrap.innerHTML = '<p class="empty">目前还没有自动识别到任何 Telegram 群，也没有手动配置的群 ID。你可以先在左侧填入群 ID，或者先让 bot 收到一条新消息。</p>';
           return;
         }
 
-        const rows = bootstrap.knownChats
+        const rows = chats
           .map((chat) => {
             const id = String(chat.id);
-            const title = chat.title || chat.username || id;
+            const title = escapeClientHtml(chat.title || chat.username || id);
             const metaParts = [id];
             if (chat.username) metaParts.push("@" + chat.username);
             if (chat.type) metaParts.push(chat.type);
+            if (chat.isConfiguredOnly) metaParts.push("等待首条消息");
+            const helpText = escapeClientHtml(chat.lastText || "");
             return \`
               <tr>
                 <td>
                   <div class="chat-title">\${title}</div>
-                  <div class="chat-meta">\${metaParts.join(" · ")}</div>
+                  <div class="chat-meta">\${escapeClientHtml(metaParts.join(" | "))}</div>
+                  <div class="inline-help">\${helpText}</div>
                 </td>
-                <td>\${chat.lastSeenAt || "-"}</td>
+                <td>\${escapeClientHtml(chat.lastSeenAt || "尚未收到")}</td>
                 <td><input type="checkbox" data-bucket="allowed" data-id="\${id}" \${checked(state.allowed, id)} /></td>
                 <td><input type="checkbox" data-bucket="news" data-id="\${id}" \${checked(state.news, id)} /></td>
                 <td><input type="checkbox" data-bucket="analyst" data-id="\${id}" \${checked(state.analyst, id)} /></td>
@@ -419,6 +461,7 @@ export function renderAdminPage({
           state[bucket].delete(id);
         }
         syncManualFields();
+        renderChats();
       });
 
       newsMode.addEventListener("change", () => {
