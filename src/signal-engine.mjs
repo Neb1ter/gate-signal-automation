@@ -88,7 +88,13 @@ function extractAsset(text, playbook) {
     }
   }
 
-  const patterns = [/\$([A-Z]{2,10})\b/g, /\b([A-Z]{2,10})\/USDT\b/g, /\(([A-Z]{2,10})\)/g];
+  const patterns = [
+    /\blist(?:ing|ed)?\s+\$?([A-Z0-9]{2,10})\b/gi,
+    /\b([A-Z0-9]{2,10})\s+(?:will\s+be\s+)?list(?:ed|ing)\b/gi,
+    /\$([A-Z0-9]{2,10})\b/g,
+    /\b([A-Z0-9]{2,10})\/USDT\b/g,
+    /\(([A-Z0-9]{2,10})\)/g,
+  ];
   for (const pattern of patterns) {
     const match = pattern.exec(text);
     if (match?.[1]) {
