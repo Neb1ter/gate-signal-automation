@@ -1,0 +1,18 @@
+{
+  "name": "gate-signal-automation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "start:cloud": "node src/server.mjs",
+    "start:background": "powershell -ExecutionPolicy Bypass -File ./scripts/run-server.ps1",
+    "stop:background": "powershell -ExecutionPolicy Bypass -File ./scripts/stop-server.ps1",
+    "install:windows-task": "powershell -ExecutionPolicy Bypass -File ./scripts/install-windows-task.ps1",
+    "remove:windows-task": "powershell -ExecutionPolicy Bypass -File ./scripts/uninstall-windows-task.ps1",
+    "install:windows-startup": "powershell -ExecutionPolicy Bypass -File ./scripts/install-windows-task.ps1",
+    "remove:windows-startup": "powershell -ExecutionPolicy Bypass -File ./scripts/uninstall-windows-task.ps1",
+    "docker:up": "docker compose -f docker-compose.cloud.yml up -d --build",
+    "docker:down": "docker compose -f docker-compose.cloud.yml down",
+    "check": "node --check src/server.mjs && node --check src/admin-page.mjs && node --check src/config.mjs && node --check src/feishu.mjs && node --check src/gate-api.mjs && node --check src/signal-engine.mjs && node --check src/storage.mjs && node --check src/telegram.mjs"
+  }
+}

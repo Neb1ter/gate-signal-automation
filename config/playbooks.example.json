@@ -1,0 +1,106 @@
+[
+  {
+    "id": "fast-news-listing-buy",
+    "enabled": true,
+    "sourceTypes": ["news"],
+    "sourceNames": [],
+    "chatIds": [],
+    "keywordsAny": ["will list", "lists", "listing", "launches perpetual", "added to roadmap"],
+    "keywordsAll": [],
+    "excludedKeywords": ["rumor", "watchlist", "speculation"],
+    "symbolTemplate": "{{asset}}_USDT",
+    "assetHintRegex": "\\$([A-Z]{2,10})",
+    "minScore": 0.65,
+    "autoExecute": true,
+    "approvalRequired": false,
+    "cooldownMinutes": 60,
+    "action": {
+      "kind": "spot_market",
+      "side": "buy",
+      "amountQuote": "150",
+      "timeInForce": "ioc",
+      "account": "spot"
+    },
+    "notes": "用于交易所上币、永续上线、路线图新增等偏利好的快讯。默认按新闻自动模式执行；如果你在后台把新闻改成手动确认，就会先发飞书等你决定。"
+  },
+  {
+    "id": "security-incident-risk-off",
+    "enabled": true,
+    "sourceTypes": ["news"],
+    "sourceNames": [],
+    "chatIds": [],
+    "keywordsAny": ["exploit", "hack", "breach", "stolen", "suspended withdrawals", "halted bridge"],
+    "keywordsAll": [],
+    "excludedKeywords": ["drill", "post mortem"],
+    "symbolTemplate": "{{asset}}_USDT",
+    "assetHintRegex": "\\b([A-Z]{2,10})\\b",
+    "minScore": 0.7,
+    "autoExecute": true,
+    "approvalRequired": false,
+    "cooldownMinutes": 120,
+    "action": {
+      "kind": "spot_market",
+      "side": "sell",
+      "amountBase": "ALL",
+      "timeInForce": "ioc",
+      "account": "spot"
+    },
+    "notes": "用于黑客攻击、提现暂停、桥暂停等高风险事件。真实交易时会尝试卖出你账户里该币种的可用现货仓位；如果你没有持仓，则会提示无法执行。"
+  },
+  {
+    "id": "macro-risk-off-btc",
+    "enabled": true,
+    "sourceTypes": ["news"],
+    "sourceNames": [],
+    "chatIds": [],
+    "keywordsAny": [
+      "hormuz",
+      "strait of hormuz",
+      "war escalation",
+      "missile strike",
+      "airstrike",
+      "oil spikes",
+      "retaliation"
+    ],
+    "keywordsAll": [],
+    "excludedKeywords": ["simulation", "exercise"],
+    "symbolTemplate": "BTC_USDT",
+    "assetHintRegex": "",
+    "minScore": 0.55,
+    "autoExecute": true,
+    "approvalRequired": false,
+    "cooldownMinutes": 90,
+    "action": {
+      "kind": "spot_market",
+      "side": "sell",
+      "amountBase": "ALL",
+      "timeInForce": "ioc",
+      "account": "spot"
+    },
+    "notes": "用于地缘冲突、霍尔木兹海峡风险、油价急涨等宏观避险新闻。默认尝试降低 BTC 现货敞口；如果你切到新闻手动模式，就会先发飞书让你确认。"
+  },
+  {
+    "id": "analyst-btc-manual",
+    "enabled": true,
+    "sourceTypes": ["analyst"],
+    "sourceNames": [],
+    "chatIds": [],
+    "keywordsAny": ["buy btc", "long btc", "reduce btc", "sell btc"],
+    "keywordsAll": [],
+    "excludedKeywords": [],
+    "symbolTemplate": "BTC_USDT",
+    "assetHintRegex": "",
+    "minScore": 0.7,
+    "autoExecute": false,
+    "approvalRequired": true,
+    "cooldownMinutes": 15,
+    "action": {
+      "kind": "spot_market",
+      "side": "buy",
+      "amountQuote": "100",
+      "timeInForce": "ioc",
+      "account": "spot"
+    },
+    "notes": "分析师策略默认始终先发飞书，由你打开中文确认页后决定是否跟单，不会自动下单。"
+  }
+]
