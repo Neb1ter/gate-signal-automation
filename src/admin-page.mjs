@@ -13,6 +13,7 @@ function safeJson(value) {
 export function renderAdminPage({
   runtimeSettings,
   knownChats,
+  configuredChatLabels,
   signalCount,
   dryRun,
   autoExecutionEnabled,
@@ -22,6 +23,7 @@ export function renderAdminPage({
   const bootstrap = safeJson({
     runtimeSettings,
     knownChats,
+    configuredChatLabels,
     signalCount,
     dryRun,
     autoExecutionEnabled,
@@ -368,7 +370,17 @@ export function renderAdminPage({
 
       function getVisibleChats() {
         const knownMap = new Map(
-          bootstrap.knownChats.map((chat) => [String(chat.id), { ...chat, isConfiguredOnly: false }]),
+          bootstrap.knownChats.map((chat) => {
+            const id = String(chat.id);
+            return [
+              id,
+              {
+                ...chat,
+                title: bootstrap.configuredChatLabels?.[id] || chat.title,
+                isConfiguredOnly: false,
+              },
+            ];
+          }),
         );
 
         const configuredIds = new Set([...state.allowed, ...state.news, ...state.analyst]);
@@ -376,7 +388,7 @@ export function renderAdminPage({
           if (!knownMap.has(id)) {
             knownMap.set(id, {
               id,
-              title: "手动配置的群聊",
+              title: bootstrap.configuredChatLabels?.[id] || "手动配置的群聊",
               username: "",
               type: "configured",
               lastSeenAt: "",
