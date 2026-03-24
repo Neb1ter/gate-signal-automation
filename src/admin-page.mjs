@@ -17,6 +17,8 @@ export function renderAdminPage({
   signalCount,
   dryRun,
   autoExecutionEnabled,
+  telegramSourceMode,
+  telegramRuntimeSummary,
   port,
   publicBaseUrl,
 }) {
@@ -27,6 +29,8 @@ export function renderAdminPage({
     signalCount,
     dryRun,
     autoExecutionEnabled,
+    telegramSourceMode,
+    telegramRuntimeSummary,
     port,
     publicBaseUrl,
   });
@@ -265,6 +269,13 @@ export function renderAdminPage({
           <div class="metric-value">${escapeHtml(isCloudEntry ? "云端" : "本机")}</div>
           <div class="metric-hint">${escapeHtml(accessEntry)}</div>
         </div>
+        <div class="card">
+          <div class="metric-label">Telegram 监听身份</div>
+          <div class="metric-value">${escapeHtml(
+            telegramSourceMode === "user" ? "个人号" : "Bot",
+          )}</div>
+          <div class="metric-hint">${escapeHtml(telegramRuntimeSummary || "尚未连接")}</div>
+        </div>
       </div>
 
       <div class="panel-grid">
@@ -307,8 +318,16 @@ export function renderAdminPage({
 
           <div class="card">
             <div class="section-title">如何新增监听群</div>
-            <p class="section-copy">1. 把 Telegram bot 拉进目标群或频道。2. 让群里出现一条新消息。3. 回来点刷新，就能在右侧列表里勾选分类。</p>
-            <p class="inline-help">如果右侧一直是空的，通常有两种情况：bot 还没在这个群里真正收到过消息，或者 bot 没有读消息权限。现在你手工填过的群也会先显示出来，不用等第一条消息。</p>
+            <p class="section-copy">${
+              telegramSourceMode === "user"
+                ? "当前是 Telegram 个人号监听模式。只要你的 Telegram 账号本身能看到这个群，新消息就能被系统捕捉到，不再依赖 bot 管理员权限。"
+                : "当前是 Telegram Bot 监听模式。1. 把 Telegram bot 拉进目标群或频道。2. 让群里出现一条新消息。3. 回来点刷新，就能在右侧列表里勾选分类。"
+            }</p>
+            <p class="inline-help">${
+              telegramSourceMode === "user"
+                ? "如果你监控的是别人的群、频道或讨论组，推荐继续使用个人号监听。后续只需要维护群 ID 分类，不需要再给 bot 开管理员。"
+                : "如果右侧一直是空的，通常有两种情况：bot 还没在这个群里真正收到过消息，或者 bot 没有读消息权限。现在你手工填过的群也会先显示出来，不用等第一条消息。"
+            }</p>
           </div>
         </div>
 

@@ -7,12 +7,12 @@ import { FeishuNotifier } from "./feishu.mjs";
 import { GateSpotClient } from "./gate-api.mjs";
 import {
   createSignalFromPayload,
-  createSignalFromTelegram,
+  createSignalFromTelegramMessage,
   evaluateSignal,
   renderSignalReviewPage,
 } from "./signal-engine.mjs";
 import { JsonStore } from "./storage.mjs";
-import { TelegramSource } from "./telegram.mjs";
+import { createTelegramSource } from "./telegram.mjs";
 
 ensureRuntimeDirs();
 const playbooks = loadPlaybooks();
@@ -22,7 +22,13 @@ const feishuNotifier = new FeishuNotifier({
   webhookUrl: config.feishu.webhookUrl,
   publicBaseUrl: config.publicBaseUrl,
 });
-const telegramSource = new TelegramSource(config.telegram);
+const telegramSource = createTelegramSource(config.telegram);
+const telegramRuntime = {
+  sourceMode: config.telegram.sourceMode,
+  ready: false,
+  identity: "",
+  lastError: "",
+};
 
 const configuredChatLabels = {
   "-1003758464445": "Get8.Pro",
@@ -64,6 +70,18 @@ function getEffectiveTelegramConfig() {
 
 function getTelegramMessage(update) {
   return update?.channel_post || update?.message || update?.edited_channel_post || null;
+}
+
+function getTelegramRuntimeSummary() {
+  if (telegramRuntime.ready) {
+    return telegramRuntime.identity || "已连接";
+  }
+  if (telegramRuntime.lastError) {
+    return telegramRuntime.lastError;
+  }
+  return config.telegram.sourceMode === "user"
+    ? "尚未连接 Telegram 个人号"
+    : "尚未连接 Telegram Bot";
 }
 
 function escapeHtml(value) {
@@ -437,11 +455,17 @@ async function processBaseSignal(baseSignal) {
 
 async function processTelegramUpdate(update) {
   const message = getTelegramMessage(update);
-  if (message) {
-    store.recordTelegramChat(message);
+  return processTelegramMessage(message);
+}
+
+async function processTelegramMessage(message) {
+  if (!message) {
+    return null;
   }
 
-  const baseSignal = createSignalFromTelegram(update, {
+  store.recordTelegramChat(message);
+
+  const baseSignal = createSignalFromTelegramMessage(message, {
     telegram: getEffectiveTelegramConfig(),
   });
   if (!baseSignal) {
@@ -451,18 +475,31 @@ async function processTelegramUpdate(update) {
 }
 
 async function startTelegramPolling() {
-  if (config.telegram.mode !== "polling" || !telegramSource.isConfigured()) {
+  if (
+    config.telegram.sourceMode !== "bot" ||
+    config.telegram.mode !== "polling" ||
+    !telegramSource.isConfigured()
+  ) {
     return;
   }
+
+  telegramRuntime.ready = true;
+  telegramRuntime.identity = "Telegram Bot polling";
+  telegramRuntime.lastError = "";
 
   while (true) {
     try {
       const updates = await telegramSource.getUpdates(store.getTelegramOffset() + 1);
+      telegramRuntime.ready = true;
+      telegramRuntime.identity = "Telegram Bot polling";
+      telegramRuntime.lastError = "";
       for (const update of updates) {
         store.setTelegramOffset(update.update_id);
         await processTelegramUpdate(update);
       }
     } catch (error) {
+      telegramRuntime.ready = false;
+      telegramRuntime.lastError = error.message;
       console.error("[telegram] polling error:", error.message);
       await new Promise((resolve) => setTimeout(resolve, 3000));
     }
@@ -470,7 +507,11 @@ async function startTelegramPolling() {
 }
 
 async function ensureTelegramWebhook() {
-  if (config.telegram.mode !== "webhook" || !telegramSource.isConfigured()) {
+  if (
+    config.telegram.sourceMode !== "bot" ||
+    config.telegram.mode !== "webhook" ||
+    !telegramSource.isConfigured()
+  ) {
     return;
   }
 
@@ -481,11 +522,41 @@ async function ensureTelegramWebhook() {
   const webhookUrl = `${String(config.publicBaseUrl).replace(/\/$/, "")}/webhooks/telegram`;
   const info = await telegramSource.getWebhookInfo();
   if (info?.url === webhookUrl) {
+    telegramRuntime.ready = true;
+    telegramRuntime.identity = "Telegram Bot webhook";
+    telegramRuntime.lastError = "";
     return info;
   }
 
   await telegramSource.setWebhook(config.publicBaseUrl);
-  return telegramSource.getWebhookInfo();
+  const nextInfo = await telegramSource.getWebhookInfo();
+  telegramRuntime.ready = true;
+  telegramRuntime.identity = "Telegram Bot webhook";
+  telegramRuntime.lastError = "";
+  return nextInfo;
+}
+
+async function startTelegramUserStream() {
+  if (config.telegram.sourceMode !== "user") {
+    return;
+  }
+
+  if (!telegramSource.isConfigured()) {
+    const status = telegramSource.getStatus?.() || {};
+    telegramRuntime.ready = false;
+    telegramRuntime.lastError = !status.hasCredentials
+      ? "Telegram 个人号模式缺少 API ID / API Hash"
+      : "Telegram 个人号模式还没有可用会话，请先执行一次登录";
+    console.warn(`[telegram-user] ${telegramRuntime.lastError}`);
+    return;
+  }
+
+  const account = await telegramSource.start(async ({ message }) => {
+    await processTelegramMessage(message);
+  });
+  telegramRuntime.ready = true;
+  telegramRuntime.identity = `Telegram 个人号：${account.displayName}`;
+  telegramRuntime.lastError = "";
 }
 
 async function handleSignalAction(signalId, action) {
@@ -622,7 +693,11 @@ const server = http.createServer(async (request, response) => {
         publicBaseUrl: config.publicBaseUrl,
         dryRun: config.dryRun,
         autoExecutionEnabled: config.autoExecutionEnabled,
-        telegramMode: config.telegram.mode,
+        telegramMode:
+          config.telegram.sourceMode === "user" ? "user-stream" : config.telegram.mode,
+        telegramSourceMode: config.telegram.sourceMode,
+        telegramReady: telegramRuntime.ready,
+        telegramRuntime: getTelegramRuntimeSummary(),
         signalCount: store.listSignals().length,
         knownTelegramChats: store.listKnownTelegramChats().length,
       });
@@ -643,6 +718,8 @@ const server = http.createServer(async (request, response) => {
           signalCount: store.listSignals().length,
           dryRun: config.dryRun,
           autoExecutionEnabled: config.autoExecutionEnabled,
+          telegramSourceMode: config.telegram.sourceMode,
+          telegramRuntimeSummary: getTelegramRuntimeSummary(),
           port: config.port,
           publicBaseUrl: config.publicBaseUrl,
         }),
@@ -766,19 +843,32 @@ server.listen(config.port, config.host, async () => {
   console.log(`Dry run: ${config.dryRun ? "on" : "off"}`);
   console.log(`Auto execution: ${config.autoExecutionEnabled ? "enabled" : "disabled"}`);
   console.log(`Admin page: ${getBaseUrl()}/admin`);
+  console.log(
+    `Telegram source: ${config.telegram.sourceMode === "user" ? "user account" : "bot"}`,
+  );
   if (config.adminAccessToken) {
     console.log("Admin auth: enabled");
   }
-  if (config.telegram.mode === "webhook") {
+  if (config.telegram.sourceMode === "bot" && config.telegram.mode === "webhook") {
     try {
       const info = await ensureTelegramWebhook();
       console.log(`Telegram webhook ready: ${info?.url || "ok"}`);
     } catch (error) {
+      telegramRuntime.ready = false;
+      telegramRuntime.lastError = error.message;
       console.error(`Telegram webhook setup failed: ${error.message}`);
     }
   }
 });
 
 startTelegramPolling().catch((error) => {
+  telegramRuntime.ready = false;
+  telegramRuntime.lastError = error.message;
   console.error("Telegram polling crashed:", error);
+});
+
+startTelegramUserStream().catch((error) => {
+  telegramRuntime.ready = false;
+  telegramRuntime.lastError = error.message;
+  console.error("Telegram user stream crashed:", error);
 });

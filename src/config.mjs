@@ -63,6 +63,15 @@ function parseBoolean(value, fallback = false) {
 loadEnvFile(envFilePath);
 
 const dataDir = path.resolve(projectRoot, process.env.DATA_DIR || "./data");
+const telegramUserSessionFile = path.resolve(
+  projectRoot,
+  process.env.TELEGRAM_USER_SESSION_FILE || "./data/telegram-user-session.txt",
+);
+const telegramSourceMode = ["user", "bot"].includes(
+  String(process.env.TELEGRAM_SOURCE_MODE || "").toLowerCase(),
+)
+  ? String(process.env.TELEGRAM_SOURCE_MODE || "").toLowerCase()
+  : "bot";
 
 export const config = {
   projectRoot,
@@ -82,15 +91,19 @@ export const config = {
   maxDailyNotionalUsd: parseInteger(process.env.MAX_DAILY_NOTIONAL_USD, 1000),
   dedupWindowSec: parseInteger(process.env.DEDUP_WINDOW_SEC, 1800),
   telegram: {
+    sourceMode: telegramSourceMode,
     botToken: process.env.TELEGRAM_BOT_TOKEN || "",
     mode: process.env.TELEGRAM_MODE || "polling",
     apiId: process.env.TELEGRAM_API_ID || "",
     apiHash: process.env.TELEGRAM_API_HASH || "",
+    userSession: process.env.TELEGRAM_USER_SESSION || "",
+    userSessionFile: telegramUserSessionFile,
     allowedChatIds: parseCsv(process.env.TELEGRAM_ALLOWED_CHAT_IDS),
     analystChatIds: parseCsv(process.env.TELEGRAM_ANALYST_CHAT_IDS),
     newsChatIds: parseCsv(process.env.TELEGRAM_NEWS_CHAT_IDS),
     webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || "",
     pollTimeoutSec: parseInteger(process.env.TELEGRAM_POLL_TIMEOUT_SEC, 20),
+    connectionRetries: parseInteger(process.env.TELEGRAM_CONNECTION_RETRIES, 5),
   },
   feishu: {
     webhookUrl: process.env.FEISHU_WEBHOOK_URL || "",

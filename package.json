@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node src/server.mjs",
     "start:cloud": "node src/server.mjs",
+    "telegram:login": "node ./scripts/telegram-user-login.mjs",
     "start:background": "powershell -ExecutionPolicy Bypass -File ./scripts/run-server.ps1",
     "stop:background": "powershell -ExecutionPolicy Bypass -File ./scripts/stop-server.ps1",
     "install:windows-task": "powershell -ExecutionPolicy Bypass -File ./scripts/install-windows-task.ps1",
@@ -13,6 +14,10 @@
     "remove:windows-startup": "powershell -ExecutionPolicy Bypass -File ./scripts/uninstall-windows-task.ps1",
     "docker:up": "docker compose -f docker-compose.cloud.yml up -d --build",
     "docker:down": "docker compose -f docker-compose.cloud.yml down",
-    "check": "node --check src/server.mjs && node --check src/admin-page.mjs && node --check src/config.mjs && node --check src/feishu.mjs && node --check src/gate-api.mjs && node --check src/signal-engine.mjs && node --check src/storage.mjs && node --check src/telegram.mjs"
+    "check": "node --check src/server.mjs && node --check src/admin-page.mjs && node --check src/config.mjs && node --check src/feishu.mjs && node --check src/gate-api.mjs && node --check src/signal-engine.mjs && node --check src/storage.mjs && node --check src/telegram.mjs && node --check scripts/telegram-user-login.mjs"
+  },
+  "dependencies": {
+    "input": "^1.0.1",
+    "telegram": "^2.26.22"
   }
 }

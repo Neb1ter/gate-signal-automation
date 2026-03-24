@@ -27,6 +27,10 @@ function parseChatId(message) {
   return message?.chat?.id ? String(message.chat.id) : "";
 }
 
+function getTelegramMessage(update) {
+  return update?.channel_post || update?.message || update?.edited_channel_post || null;
+}
+
 function scoreSignal(text, matchedCount, sourceType) {
   const normalized = normalizeText(text);
   let score = 0.45;
@@ -128,8 +132,7 @@ function getDailyRiskSnapshot(store) {
   return { count, notional };
 }
 
-export function createSignalFromTelegram(update, config) {
-  const message = update.channel_post || update.message || update.edited_channel_post;
+export function createSignalFromTelegramMessage(message, config) {
   if (!message) {
     return null;
   }
@@ -158,6 +161,10 @@ export function createSignalFromTelegram(update, config) {
     text,
     publishedAt: new Date((message.date || Math.floor(Date.now() / 1000)) * 1000).toISOString(),
   };
+}
+
+export function createSignalFromTelegram(update, config) {
+  return createSignalFromTelegramMessage(getTelegramMessage(update), config);
 }
 
 export function createSignalFromPayload(payload) {
