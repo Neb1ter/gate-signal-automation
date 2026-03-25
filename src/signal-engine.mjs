@@ -413,7 +413,45 @@ function buildStructuredSummary(analysis) {
   return lines.join("\n");
 }
 
-function buildDefaultTradeIdea(baseSignal, analysis, selectedPlaybook) {
+function buildStructuredSummaryV2(analysis) {
+  if (!analysis) {
+    return "";
+  }
+
+  const messageTypeLabel =
+    analysis.messageType === "strategy"
+      ? "交易策略"
+      : analysis.messageType === "analysis"
+        ? "行情分析"
+        : analysis.messageType === "watchlist"
+          ? "观察提醒"
+          : "普通转发";
+
+  const lines = [
+    `文案类型：${messageTypeLabel}`,
+    `币种：${analysis.asset || "未识别"}`,
+    `方向：${analysis.directionLabel || "未识别"}`,
+    `入场：${formatEntry(analysis)}`,
+    `止损：${analysis.stopLoss ?? "未给出"}`,
+    `止盈：${formatTakeProfits(analysis)}`,
+    `周期：${analysis.timeframe || "未提及"}`,
+    `信号强度：${analysis.confidence || "中"}`,
+  ];
+
+  if (analysis.leverage) {
+    lines.push(`杠杆：${analysis.leverage}`);
+  }
+  if (analysis.complianceComment) {
+    lines.push(`AI 规范建议：${analysis.complianceComment}`);
+  }
+  if (analysis.riskFlags?.length) {
+    lines.push(`提醒：${analysis.riskFlags.join("；")}`);
+  }
+
+  return lines.join("\n");
+}
+
+function buildDefaultTradeIdea(baseSignal, analysis, selectedPlaybook, analystConfig = {}) {
   if (!analysis?.actionable || !analysis.symbol) {
     return null;
   }
@@ -434,7 +472,7 @@ function buildDefaultTradeIdea(baseSignal, analysis, selectedPlaybook) {
   };
 
   if (side === "buy") {
-    tradeIdea.amountQuote = defaults.amountQuote || "100";
+    tradeIdea.amountQuote = analystConfig.amountQuote || defaults.amountQuote || "100";
   } else {
     tradeIdea.amountBase = defaults.amountBase || "ALL";
   }
@@ -680,20 +718,6 @@ export function evaluateSignal(baseSignal, playbooks, config, store) {
 
   const matched = playbooks.filter((playbook) => matchesPlaybook(baseSignal, playbook));
   const selectedPlaybook = matched[0] || null;
-  const analysis =
-    baseSignal.sourceType === "analyst"
-      ? buildStructuredStrategy(baseSignal.text, baseSignal.sourceType)
-      : null;
-  if (analysis) {
-    analysis.normalizedSummary = buildStructuredSummary(analysis);
-  }
-
-  const score = scoreSignal(baseSignal.text, matched.length, baseSignal.sourceType, analysis);
-  const asset = selectedPlaybook ? extractAssetFromPlaybook(baseSignal.text, selectedPlaybook) : "";
-  const tradeIdea = selectedPlaybook
-    ? buildPlaybookTradeIdea(selectedPlaybook, asset, analysis)
-    : buildDefaultTradeIdea(baseSignal, analysis, selectedPlaybook);
-  const risk = getDailyRiskSnapshot(store);
   const runtimeSettings = store.getRuntimeSettings({
     telegram: {
       allowedChatIds: [],
@@ -703,19 +727,59 @@ export function evaluateSignal(baseSignal, playbooks, config, store) {
     feishu: {
       analystRoutes: [],
     },
+    analysts: {
+      configs: [],
+    },
     execution: {
       newsMode: "auto",
     },
   });
+  const analystConfig =
+    runtimeSettings.analysts?.configs?.find(
+      (item) => String(item.chatId || "") === String(baseSignal.chatId || ""),
+    ) || null;
+  const analysis =
+    baseSignal.sourceType === "analyst"
+      ? buildStructuredStrategy(baseSignal.text, baseSignal.sourceType)
+      : null;
+  if (analysis) {
+    analysis.normalizedSummary = buildStructuredSummaryV2(analysis);
+  }
+
+  const score = scoreSignal(baseSignal.text, matched.length, baseSignal.sourceType, analysis);
+  const asset = selectedPlaybook ? extractAssetFromPlaybook(baseSignal.text, selectedPlaybook) : "";
+  const tradeIdea = selectedPlaybook
+    ? buildPlaybookTradeIdea(selectedPlaybook, asset, analysis)
+    : buildDefaultTradeIdea(baseSignal, analysis, selectedPlaybook, analystConfig || {});
+  const risk = getDailyRiskSnapshot(store);
 
   let executionStatus = "notify_only";
   let executionReason = "没有命中可执行策略，这条消息只做提醒";
+  let finalTradeIdea = tradeIdea;
 
   if (baseSignal.sourceType === "analyst") {
-    executionStatus = "pending_approval";
-    executionReason = tradeIdea
-      ? "已提炼为结构化交易建议，等待你确认是否跟单"
-      : "已转为结构化行情摘要，但暂未抽取出可执行下单参数";
+    const allowedSymbols = Array.isArray(analystConfig?.allowedSymbols)
+      ? analystConfig.allowedSymbols
+      : [];
+    const symbolAllowed =
+      !finalTradeIdea?.symbol ||
+      !allowedSymbols.length ||
+      allowedSymbols.includes(String(finalTradeIdea.symbol || "").split("_")[0]?.toUpperCase());
+
+    if (analystConfig?.enabled === false) {
+      finalTradeIdea = null;
+      executionStatus = "notify_only";
+      executionReason = "该分析师已关闭自动跟单，只保留消息转发";
+    } else if (finalTradeIdea && !symbolAllowed) {
+      finalTradeIdea = null;
+      executionStatus = "notify_only";
+      executionReason = "该分析师当前只允许白名单币种，已转为提醒";
+    } else {
+      executionStatus = "pending_approval";
+      executionReason = finalTradeIdea
+        ? "已提炼为结构化交易建议，等待你确认是否跟单"
+        : "已转为结构化行情摘要，但暂未抽取出可执行下单参数";
+    }
   } else if (selectedPlaybook && tradeIdea) {
     const notionalEstimate =
       Number.parseFloat(tradeIdea.amountQuote || "") ||
@@ -765,7 +829,14 @@ export function evaluateSignal(baseSignal, playbooks, config, store) {
       selectedPlaybookId: selectedPlaybook?.id || "",
       playbookNotes: selectedPlaybook?.notes || "",
       analysis,
-      tradeIdea,
+      tradeIdea: finalTradeIdea,
+      analystFollowConfig: analystConfig
+        ? {
+            enabled: analystConfig.enabled !== false,
+            amountQuote: analystConfig.amountQuote || "100",
+            allowedSymbols: analystConfig.allowedSymbols || [],
+          }
+        : null,
       executionStatus,
       executionReason,
       reviewedAt: "",
@@ -808,7 +879,7 @@ export function applyAiAnalysis(signal, aiAnalysis) {
     riskFlags: unique([...(signal.analysis.riskFlags || []), ...(aiAnalysis.riskFlags || [])]),
   };
 
-  nextAnalysis.normalizedSummary = buildStructuredSummary(nextAnalysis);
+  nextAnalysis.normalizedSummary = buildStructuredSummaryV2(nextAnalysis);
   signal.analysis = nextAnalysis;
 
   if (!signal.tradeIdea) {
@@ -825,6 +896,12 @@ export function applyAiAnalysis(signal, aiAnalysis) {
 
   if (signal.sourceType === "analyst") {
     signal.executionStatus = "pending_approval";
+    signal.executionReason = signal.tradeIdea
+      ? "AI 已补充结构化建议，等待你确认是否跟单"
+      : "AI 已补充结构化摘要，但仍未形成可执行下单参数";
+  }
+
+  if (signal.sourceType === "analyst") {
     signal.executionReason = signal.tradeIdea
       ? "AI 已补充结构化建议，等待你确认是否跟单"
       : "AI 已补充结构化摘要，但仍未形成可执行下单参数";

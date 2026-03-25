@@ -36,6 +36,33 @@ export class GateSpotClient {
     return Boolean(this.apiKey && this.apiSecret && this.apiKey !== "replace-me");
   }
 
+  async publicRequest(method, urlPath, query = "") {
+    const url = query
+      ? `${this.baseUrl}${this.prefix}${urlPath}?${query}`
+      : `${this.baseUrl}${this.prefix}${urlPath}`;
+
+    const response = await fetch(url, {
+      method,
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    const text = await response.text();
+    let payload;
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      payload = { raw: text };
+    }
+
+    if (!response.ok) {
+      throw new Error(`Gate API ${response.status}: ${JSON.stringify(payload)}`);
+    }
+
+    return payload;
+  }
+
   async request(method, urlPath, query = "", body = "") {
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const bodyHash = sha512Hex(body);
@@ -128,6 +155,32 @@ export class GateSpotClient {
       ? accounts.find((item) => String(item.currency || "").toUpperCase() === currency)
       : null;
     return trimAmount(record?.available || "");
+  }
+
+  async getSpotTicker(symbol) {
+    if (!symbol) {
+      return null;
+    }
+    const payload = await this.publicRequest(
+      "GET",
+      "/spot/tickers",
+      `currency_pair=${encodeURIComponent(symbol)}`,
+    );
+    return Array.isArray(payload) ? payload[0] || null : payload;
+  }
+
+  async getSpotBalances(currencies = []) {
+    const rows = await this.request("GET", "/spot/accounts", "", "");
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+    const wanted = new Set((currencies || []).map((item) => String(item || "").toUpperCase()));
+    return rows.filter((item) => {
+      if (!wanted.size) {
+        return true;
+      }
+      return wanted.has(String(item.currency || "").toUpperCase());
+    });
   }
 
   async resolveSpotAmount(action) {

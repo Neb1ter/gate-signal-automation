@@ -27,6 +27,39 @@ function normalizeAnalystRoutes(value) {
   return normalized;
 }
 
+function normalizeSymbolList(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean))];
+  }
+  return [...new Set(String(value || "")
+    .split(",")
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean))];
+}
+
+function normalizeAnalystConfigs(value) {
+  const configs = Array.isArray(value) ? value : [];
+  const normalized = [];
+  const seen = new Set();
+
+  for (const item of configs) {
+    const chatId = String(item?.chatId || "").trim();
+    if (!chatId || seen.has(chatId)) {
+      continue;
+    }
+
+    normalized.push({
+      chatId,
+      enabled: item?.enabled !== false,
+      amountQuote: String(item?.amountQuote || "").trim() || "100",
+      allowedSymbols: normalizeSymbolList(item?.allowedSymbols),
+    });
+    seen.add(chatId);
+  }
+
+  return normalized;
+}
+
 function normalizeAiSettings(value, defaults = {}) {
   const source = value || {};
   return {
@@ -90,6 +123,9 @@ export class JsonStore {
       feishu: {
         analystRoutes: normalizeAnalystRoutes(defaults.feishu?.analystRoutes),
       },
+      analysts: {
+        configs: normalizeAnalystConfigs(defaults.analysts?.configs),
+      },
       execution: {
         newsMode: defaults.execution?.newsMode === "manual" ? "manual" : "auto",
       },
@@ -128,6 +164,9 @@ export class JsonStore {
       feishu: {
         analystRoutes: normalizeAnalystRoutes(this.state.runtimeSettings?.feishu?.analystRoutes),
       },
+      analysts: {
+        configs: normalizeAnalystConfigs(this.state.runtimeSettings?.analysts?.configs),
+      },
       execution: {
         newsMode:
           this.state.runtimeSettings?.execution?.newsMode === "manual" ? "manual" : "auto",
@@ -141,6 +180,7 @@ export class JsonStore {
     const current = this.getRuntimeSettings(defaults);
     const nextTelegram = nextSettings?.telegram || {};
     const nextFeishu = nextSettings?.feishu || {};
+    const nextAnalysts = nextSettings?.analysts || {};
     const nextAi = nextSettings?.ai || {};
     const nextGate = nextSettings?.gate || {};
 
@@ -158,6 +198,9 @@ export class JsonStore {
         analystRoutes: normalizeAnalystRoutes(
           nextFeishu.analystRoutes ?? current.feishu.analystRoutes,
         ),
+      },
+      analysts: {
+        configs: normalizeAnalystConfigs(nextAnalysts.configs ?? current.analysts.configs),
       },
       execution: {
         newsMode: nextSettings?.execution?.newsMode === "manual" ? "manual" : "auto",
@@ -237,6 +280,12 @@ export class JsonStore {
   appendTrade(trade) {
     this.state.trades.push(trade);
     this.save();
+  }
+
+  listTrades() {
+    return [...this.state.trades].sort((a, b) =>
+      String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+    );
   }
 
   listTradesForDatePrefix(datePrefix) {

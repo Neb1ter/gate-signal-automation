@@ -22,6 +22,7 @@ export function renderAdminPage({
   defaultFeishuConfigured,
   telegramSourceMode,
   telegramRuntimeSummary,
+  analystMetrics,
   port,
   publicBaseUrl,
 }) {
@@ -37,6 +38,7 @@ export function renderAdminPage({
     defaultFeishuConfigured,
     telegramSourceMode,
     telegramRuntimeSummary,
+    analystMetrics,
     port,
     publicBaseUrl,
   });
@@ -255,6 +257,52 @@ export function renderAdminPage({
         gap: 10px;
         margin-top: 12px;
       }
+      .route-config-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .route-metrics {
+        margin-top: 14px;
+        border-top: 1px solid var(--line);
+        padding-top: 12px;
+      }
+      .route-metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .route-metric {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        padding: 10px;
+      }
+      .route-metric strong {
+        display: block;
+        font-size: 18px;
+        margin-top: 4px;
+      }
+      .mini-list {
+        margin-top: 10px;
+        display: grid;
+        gap: 8px;
+      }
+      .mini-item {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px;
+        background: #fff;
+      }
+      .mini-item-title {
+        font-weight: 600;
+      }
+      .mini-item-meta {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 4px;
+      }
       .hint-list {
         display: grid;
         gap: 10px;
@@ -456,6 +504,18 @@ export function renderAdminPage({
             },
           ]),
         ),
+        analystConfigs: new Map(
+          (bootstrap.runtimeSettings.analysts?.configs || []).map((item) => [
+            String(item.chatId),
+            {
+              enabled: item.enabled !== false,
+              amountQuote: String(item.amountQuote || "100"),
+              allowedSymbols: Array.isArray(item.allowedSymbols)
+                ? item.allowedSymbols.join(", ")
+                : String(item.allowedSymbols || ""),
+            },
+          ]),
+        ),
         newsMode: bootstrap.runtimeSettings.execution?.newsMode === "manual" ? "manual" : "auto",
         ai: {
           enabled: Boolean(bootstrap.runtimeSettings.ai?.enabled),
@@ -495,6 +555,18 @@ export function renderAdminPage({
           .replaceAll("<", "&lt;")
           .replaceAll(">", "&gt;")
           .replaceAll('"', "&quot;");
+      }
+
+      function formatMetricNumber(value, digits = 2) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) {
+          return "--";
+        }
+        return numeric.toFixed(digits);
+      }
+
+      function getAnalystMetric(chatId) {
+        return (bootstrap.analystMetrics || []).find((item) => String(item.chatId) === String(chatId)) || null;
       }
 
       function parseCsv(value) {
@@ -632,45 +704,176 @@ export function renderAdminPage({
       }
 
       function renderAnalystRoutes() {
-        const analystIds = [...state.analyst].sort((a, b) => getChatTitle(a).localeCompare(getChatTitle(b), "zh-CN"));
+        const analystIds = [...state.analyst].sort((a, b) =>
+          getChatTitle(a).localeCompare(getChatTitle(b), "zh-CN"),
+        );
         if (!analystIds.length) {
-          analystRoutesWrap.innerHTML = '<div class="empty">先在右侧把某个 Telegram 群勾成“分析师群”，这里才会出现对应的飞书路由配置。</div>';
+          analystRoutesWrap.innerHTML =
+            '<div class="empty">还没有设置任何分析师群。先把 Telegram 群勾选为“分析师群”，这里就会出现对应配置。</div>';
           return;
         }
+
+        const renderPositions = (metric) => {
+          if (!metric?.positions?.length) {
+            return '<div class="inline-help">当前没有未平仓的模拟持仓。</div>';
+          }
+          return [
+            '<div class="mini-list">',
+            ...metric.positions.slice(0, 3).map((position) =>
+              [
+                '<div class="mini-item">',
+                '<div class="mini-item-title">' + escapeClientHtml(position.symbol) + "</div>",
+                '<div class="mini-item-meta">' +
+                  "数量 " +
+                  escapeClientHtml(formatMetricNumber(position.qty, 6)) +
+                  " · 均价 " +
+                  escapeClientHtml(formatMetricNumber(position.avgCost, 2)) +
+                  " · 浮盈亏 " +
+                  escapeClientHtml(formatMetricNumber(position.unrealizedPnl, 2)) +
+                  "</div>",
+                "</div>",
+              ].join(""),
+            ),
+            "</div>",
+          ].join("");
+        };
+
+        const renderRecentTrades = (metric) => {
+          if (!metric?.recentTrades?.length) {
+            return '<div class="inline-help">当前还没有可统计的成交记录。</div>';
+          }
+          return [
+            '<div class="mini-list">',
+            ...metric.recentTrades.slice(0, 3).map((trade) => {
+              const realizedText =
+                trade.realizedPnl === null
+                  ? ""
+                  : " · 已实现盈亏 " + escapeClientHtml(formatMetricNumber(trade.realizedPnl, 2));
+              return [
+                '<div class="mini-item">',
+                '<div class="mini-item-title">' +
+                  escapeClientHtml(trade.symbol) +
+                  " · " +
+                  escapeClientHtml(String(trade.side || "").toUpperCase()) +
+                  "</div>",
+                '<div class="mini-item-meta">' +
+                  escapeClientHtml(String(trade.createdAt || "").replace("T", " ").replace("Z", " UTC")) +
+                  " · 均价 " +
+                  escapeClientHtml(formatMetricNumber(trade.avgPrice, 2)) +
+                  realizedText +
+                  "</div>",
+                "</div>",
+              ].join("");
+            }),
+            "</div>",
+          ].join("");
+        };
 
         analystRoutesWrap.innerHTML = analystIds
           .map((chatId) => {
             const route = state.analystRoutes.get(chatId) || { webhookUrl: "", displayName: "" };
-            return \`
-              <section class="route-card">
-                <h3>\${escapeClientHtml(getChatTitle(chatId))}</h3>
-                <p>Telegram 群 ID：\${escapeClientHtml(chatId)}</p>
-                <div class="route-fields">
-                  <div>
-                    <label>飞书群显示名</label>
-                    <input
-                      type="text"
-                      data-route-id="\${escapeClientHtml(chatId)}"
-                      data-route-field="displayName"
-                      value="\${escapeClientHtml(route.displayName)}"
-                      placeholder="例如：三马哥策略专线"
-                    />
-                    <small>飞书消息里会显示这个名字，而不是 Telegram 原始作者身份。</small>
-                  </div>
-                  <div>
-                    <label>飞书机器人 Webhook</label>
-                    <input
-                      type="url"
-                      data-route-id="\${escapeClientHtml(chatId)}"
-                      data-route-field="webhookUrl"
-                      value="\${escapeClientHtml(route.webhookUrl)}"
-                      placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..."
-                    />
-                    <small>留空时会回落到默认飞书群；填写后，这个分析师群就会单独发到指定的飞书群。</small>
-                  </div>
-                </div>
-              </section>
-            \`;
+            const analystConfig = state.analystConfigs.get(chatId) || {
+              enabled: true,
+              amountQuote: "100",
+              allowedSymbols: "",
+            };
+            const metric = getAnalystMetric(chatId);
+            const winRateText =
+              metric?.winRate === null ? "--" : formatMetricNumber(metric.winRate, 2) + "%";
+            const plRatioText =
+              metric?.profitLossRatio === null
+                ? "--"
+                : formatMetricNumber(metric.profitLossRatio, 2);
+
+            return [
+              '<section class="route-card">',
+              "<h3>" + escapeClientHtml(getChatTitle(chatId)) + "</h3>",
+              "<p>Telegram 群 ID：" + escapeClientHtml(chatId) + "</p>",
+              '<div class="route-fields">',
+              "<div>",
+              "<label>飞书显示名称</label>",
+              '<input type="text" data-route-id="' +
+                escapeClientHtml(chatId) +
+                '" data-route-field="displayName" value="' +
+                escapeClientHtml(route.displayName) +
+                '" placeholder="例如：三马哥策略专线" />',
+              "<small>飞书收到消息时显示这个名称，用来和 Telegram 原群做区分。</small>",
+              "</div>",
+              "<div>",
+              "<label>专属飞书 Webhook</label>",
+              '<input type="url" data-route-id="' +
+                escapeClientHtml(chatId) +
+                '" data-route-field="webhookUrl" value="' +
+                escapeClientHtml(route.webhookUrl) +
+                '" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..." />',
+              "<small>填了就发到这个分析师自己的飞书群；留空则回落到默认飞书群。</small>",
+              "</div>",
+              '<div class="route-config-grid">',
+              "<div>",
+              "<label>跟单开关</label>",
+              '<select data-analyst-id="' +
+                escapeClientHtml(chatId) +
+                '" data-analyst-field="enabled">',
+              '<option value="true"' + (analystConfig.enabled !== false ? " selected" : "") + ">开启</option>",
+              '<option value="false"' + (analystConfig.enabled === false ? " selected" : "") + ">关闭</option>",
+              "</select>",
+              "<small>关闭后仍会转发策略，但不会生成可执行跟单建议。</small>",
+              "</div>",
+              "<div>",
+              "<label>默认跟单金额 (USDT)</label>",
+              '<input type="text" data-analyst-id="' +
+                escapeClientHtml(chatId) +
+                '" data-analyst-field="amountQuote" value="' +
+                escapeClientHtml(analystConfig.amountQuote || "100") +
+                '" placeholder="例如 100" />',
+              "<small>这个分析师的买入信号默认使用这个金额下模拟单。</small>",
+              "</div>",
+              "<div>",
+              "<label>白名单币种</label>",
+              '<input type="text" data-analyst-id="' +
+                escapeClientHtml(chatId) +
+                '" data-analyst-field="allowedSymbols" value="' +
+                escapeClientHtml(analystConfig.allowedSymbols || "") +
+                '" placeholder="例如 BTC, ETH, SOL" />',
+              "<small>只允许这些币种生成跟单建议；留空表示不限制。</small>",
+              "</div>",
+              "</div>",
+              "</div>",
+              '<div class="route-metrics">',
+              '<div class="chat-title">策略执行统计</div>',
+              '<div class="route-metrics-grid">',
+              '<div class="route-metric"><div class="inline-help">交易次数</div><strong>' +
+                escapeClientHtml(formatMetricNumber(metric?.tradeCount || 0, 0)) +
+                "</strong></div>",
+              '<div class="route-metric"><div class="inline-help">胜率</div><strong>' +
+                escapeClientHtml(winRateText) +
+                "</strong></div>",
+              '<div class="route-metric"><div class="inline-help">盈亏比</div><strong>' +
+                escapeClientHtml(plRatioText) +
+                "</strong></div>",
+              '<div class="route-metric"><div class="inline-help">总盈亏 (USDT)</div><strong>' +
+                escapeClientHtml(formatMetricNumber(metric?.totalPnl || 0, 2)) +
+                "</strong></div>",
+              "</div>",
+              '<div class="route-metrics-grid">',
+              '<div class="route-metric"><div class="inline-help">已实现盈亏</div><strong>' +
+                escapeClientHtml(formatMetricNumber(metric?.realizedPnl || 0, 2)) +
+                "</strong></div>",
+              '<div class="route-metric"><div class="inline-help">未实现盈亏</div><strong>' +
+                escapeClientHtml(formatMetricNumber(metric?.unrealizedPnl || 0, 2)) +
+                "</strong></div>",
+              '<div class="route-metric"><div class="inline-help">已平仓笔数</div><strong>' +
+                escapeClientHtml(formatMetricNumber(metric?.closeCount || 0, 0)) +
+                "</strong></div>",
+              '<div class="route-metric"><div class="inline-help">成交额 (USDT)</div><strong>' +
+                escapeClientHtml(formatMetricNumber(metric?.quoteVolume || 0, 2)) +
+                "</strong></div>",
+              "</div>",
+              '<div class="field"><label>当前持仓</label>' + renderPositions(metric) + "</div>",
+              '<div class="field"><label>最近成交</label>' + renderRecentTrades(metric) + "</div>",
+              "</div>",
+              "</section>",
+            ].join("");
           })
           .join("");
       }
@@ -682,6 +885,20 @@ export function renderAdminPage({
 
       document.addEventListener("change", (event) => {
         const target = event.target;
+        if (target instanceof HTMLSelectElement) {
+          const analystId = target.dataset.analystId;
+          const analystField = target.dataset.analystField;
+          if (analystId && analystField) {
+            const current = state.analystConfigs.get(analystId) || {
+              enabled: true,
+              amountQuote: "100",
+              allowedSymbols: "",
+            };
+            current[analystField] = analystField === "enabled" ? target.value === "true" : target.value;
+            state.analystConfigs.set(analystId, current);
+            return;
+          }
+        }
         if (!(target instanceof HTMLInputElement)) return;
         const bucket = target.dataset.bucket;
         const id = target.dataset.id;
@@ -705,6 +922,17 @@ export function renderAdminPage({
             const current = state.analystRoutes.get(routeId) || { webhookUrl: "", displayName: "" };
             current[routeField] = target.value;
             state.analystRoutes.set(routeId, current);
+          }
+          const analystId = target.dataset.analystId;
+          const analystField = target.dataset.analystField;
+          if (analystId && analystField) {
+            const current = state.analystConfigs.get(analystId) || {
+              enabled: true,
+              amountQuote: "100",
+              allowedSymbols: "",
+            };
+            current[analystField] = target.value;
+            state.analystConfigs.set(analystId, current);
           }
         }
       });
@@ -748,6 +976,17 @@ export function renderAdminPage({
               })
               .filter((route) => route.displayName || route.webhookUrl),
           },
+          analysts: {
+            configs: [...state.analyst].map((chatId) => {
+              const analystConfig = state.analystConfigs.get(chatId) || {};
+              return {
+                chatId,
+                enabled: analystConfig.enabled !== false,
+                amountQuote: String(analystConfig.amountQuote || "100").trim() || "100",
+                allowedSymbols: parseCsv(String(analystConfig.allowedSymbols || "")),
+              };
+            }),
+          },
           execution: {
             newsMode: state.newsMode,
           },
@@ -789,6 +1028,18 @@ export function renderAdminPage({
               {
                 webhookUrl: String(route.webhookUrl || ""),
                 displayName: String(route.displayName || ""),
+              },
+            ]),
+          );
+          state.analystConfigs = new Map(
+            (saved.analysts?.configs || []).map((item) => [
+              String(item.chatId),
+              {
+                enabled: item.enabled !== false,
+                amountQuote: String(item.amountQuote || "100"),
+                allowedSymbols: Array.isArray(item.allowedSymbols)
+                  ? item.allowedSymbols.join(", ")
+                  : String(item.allowedSymbols || ""),
               },
             ]),
           );

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 
 import { AnalystAiReviewer } from "./analyst-ai.mjs";
+import { buildAnalystMetrics } from "./analyst-metrics.mjs";
 import { renderAdminPage } from "./admin-page.mjs";
 import { config, ensureRuntimeDirs, loadPlaybooks } from "./config.mjs";
 import { FeishuNotifier } from "./feishu.mjs";
@@ -53,6 +54,9 @@ const defaultRuntimeSettings = {
   },
   feishu: {
     analystRoutes: [],
+  },
+  analysts: {
+    configs: [],
   },
   execution: {
     newsMode: "auto",
@@ -115,6 +119,12 @@ function getAnalystRoute(chatId) {
   const runtimeSettings = getRuntimeSettings();
   const routes = runtimeSettings.feishu?.analystRoutes || [];
   return routes.find((route) => route.chatId === String(chatId || "")) || null;
+}
+
+function getAnalystConfig(chatId) {
+  const runtimeSettings = getRuntimeSettings();
+  const configs = runtimeSettings.analysts?.configs || [];
+  return configs.find((item) => item.chatId === String(chatId || "")) || null;
 }
 
 function getSignalDeliveryOptions(signal) {
@@ -483,9 +493,38 @@ async function executeSignal(signal, trigger) {
     signal.executionStatus = gateClient.dryRun ? "dry_run_executed" : "executed";
     signal.executionResult = executionResult;
     store.upsertSignal(signal);
+    const feeValue =
+      Number.parseFloat(result?.fee || "") ||
+      Number.parseFloat(result?.gt_fee || "") ||
+      Number.parseFloat(result?.point_fee || "") ||
+      0;
+    const filledBaseQty =
+      Number.parseFloat(result?.filled_amount || "") ||
+      Number.parseFloat(result?.amount || "") ||
+      0;
+    const filledQuoteQty =
+      Number.parseFloat(result?.filled_total || "") ||
+      Number.parseFloat(signal.tradeIdea.amountQuote || "") ||
+      0;
     store.appendTrade({
       createdAt: executionResult.at,
       signalId: signal.id,
+      chatId: signal.chatId,
+      sourceType: signal.sourceType,
+      sourceName: signal.sourceName,
+      deliveryDisplayName: signal.deliveryDisplayName || signal.displaySourceName || signal.sourceName,
+      symbol: signal.tradeIdea.symbol,
+      side: signal.tradeIdea.side,
+      mode: gateClient.dryRun ? "dry_run" : "testnet",
+      orderId: String(result?.id || ""),
+      orderStatus: String(result?.status || ""),
+      finishAs: String(result?.finish_as || ""),
+      clientOrderId: String(signal.tradeIdea.clientOrderId || ""),
+      avgPrice: Number.parseFloat(result?.avg_deal_price || result?.fill_price || "") || 0,
+      filledBaseQty,
+      filledQuoteQty,
+      fee: feeValue,
+      feeCurrency: String(result?.fee_currency || ""),
       notionalUsd:
         Number.parseFloat(signal.tradeIdea.amountQuote || "") ||
         Number.parseFloat(signal.tradeIdea.amountBase || "") ||
@@ -792,6 +831,14 @@ const server = http.createServer(async (request, response) => {
       if (!requireAdmin(request, response, url)) {
         return;
       }
+      const analystMetrics = await buildAnalystMetrics({
+        runtimeSettings: getRuntimeSettings(),
+        knownChats: store.listKnownTelegramChats(),
+        configuredChatLabels,
+        trades: store.listTrades(),
+        signals: store.listSignals(),
+        gateClient: createGateClient(getRuntimeSettings()),
+      });
       html(
         response,
         200,
@@ -807,6 +854,7 @@ const server = http.createServer(async (request, response) => {
           defaultFeishuConfigured: Boolean(config.feishu.webhookUrl),
           telegramSourceMode: config.telegram.sourceMode,
           telegramRuntimeSummary: getTelegramRuntimeSummary(),
+          analystMetrics,
           port: config.port,
           publicBaseUrl: config.publicBaseUrl,
         }),
@@ -856,6 +904,22 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       json(response, 200, store.listSignals().slice(0, 100));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/analyst-metrics") {
+      if (!requireAdmin(request, response, url)) {
+        return;
+      }
+      const analystMetrics = await buildAnalystMetrics({
+        runtimeSettings: getRuntimeSettings(),
+        knownChats: store.listKnownTelegramChats(),
+        configuredChatLabels,
+        trades: store.listTrades(),
+        signals: store.listSignals(),
+        gateClient: createGateClient(getRuntimeSettings()),
+      });
+      json(response, 200, analystMetrics);
       return;
     }
 
