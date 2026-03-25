@@ -446,7 +446,7 @@ export function renderAdminPage({
             </div>
             <div class="field">
               <label for="aiTimeoutMs">AI 超时（毫秒）</label>
-              <input id="aiTimeoutMs" type="text" value="${escapeHtml(runtimeSettings.ai?.timeoutMs || 15000)}" />
+              <input id="aiTimeoutMs" type="text" value="${escapeHtml(runtimeSettings.ai?.timeoutMs || 30000)}" />
             </div>
           </div>
           <div class="card">
@@ -544,7 +544,7 @@ export function renderAdminPage({
           reviewModel: String(bootstrap.runtimeSettings.ai?.reviewModel || "deepseek-v3.2"),
           reviewEnabled: bootstrap.runtimeSettings.ai?.reviewEnabled !== false,
           apiKey: String(bootstrap.runtimeSettings.ai?.apiKey || ""),
-          timeoutMs: String(bootstrap.runtimeSettings.ai?.timeoutMs || "15000"),
+          timeoutMs: String(bootstrap.runtimeSettings.ai?.timeoutMs || "30000"),
         },
         gate: {
           mode: String(bootstrap.runtimeSettings.gate?.mode || "dry_run"),
@@ -1026,7 +1026,7 @@ export function renderAdminPage({
             reviewModel: state.ai.reviewModel,
             reviewEnabled: state.ai.reviewEnabled,
             apiKey: state.ai.apiKey,
-            timeoutMs: Number.parseInt(state.ai.timeoutMs || "15000", 10) || 15000,
+            timeoutMs: Number.parseInt(state.ai.timeoutMs || "30000", 10) || 30000,
           },
           gate: {
             mode: state.gate.mode,
@@ -1083,7 +1083,7 @@ export function renderAdminPage({
             reviewModel: String(saved.ai?.reviewModel || "deepseek-v3.2"),
             reviewEnabled: saved.ai?.reviewEnabled !== false,
             apiKey: String(saved.ai?.apiKey || ""),
-            timeoutMs: String(saved.ai?.timeoutMs || "15000"),
+            timeoutMs: String(saved.ai?.timeoutMs || "30000"),
           };
           state.gate = {
             mode: String(saved.gate?.mode || "dry_run"),

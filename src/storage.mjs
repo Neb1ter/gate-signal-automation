@@ -81,7 +81,7 @@ function normalizeAiSettings(value, defaults = {}) {
       source.reviewEnabled === undefined
         ? defaults.reviewEnabled !== false
         : Boolean(source.reviewEnabled),
-    timeoutMs: Number(source.timeoutMs ?? defaults.timeoutMs ?? 15000) || 15000,
+    timeoutMs: Number(source.timeoutMs ?? defaults.timeoutMs ?? 30000) || 30000,
   };
 }
 

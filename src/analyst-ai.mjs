@@ -212,7 +212,7 @@ export class AnalystAiReviewer {
     this.primaryModel = config.primaryModel || config.model || "";
     this.reviewModel = config.reviewModel || "";
     this.reviewEnabled = config.reviewEnabled !== false;
-    this.timeoutMs = Number(config.timeoutMs || 15000);
+    this.timeoutMs = Number(config.timeoutMs || 30000);
   }
 
   isConfigured() {
@@ -250,27 +250,32 @@ export class AnalystAiReviewer {
     return parsed;
   }
 
+  async callModelWithTimeout(model, messages) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      return await this.callModel(model, messages, controller);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async review(signal) {
     if (!this.isConfigured() || signal?.sourceType !== "analyst") {
       return null;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
     try {
-      const primaryRaw = await this.callModel(
+      const primaryRaw = await this.callModelWithTimeout(
         this.primaryModel,
         buildPrimaryMessages(signal),
-        controller,
       );
 
       let merged = primaryRaw;
       if (this.reviewEnabled && this.reviewModel) {
-        const reviewRaw = await this.callModel(
+        const reviewRaw = await this.callModelWithTimeout(
           this.reviewModel,
           buildReviewMessages(signal, primaryRaw),
-          controller,
         );
         merged = mergeObjects(primaryRaw, reviewRaw);
       }
@@ -292,8 +297,6 @@ export class AnalystAiReviewer {
         }`,
         riskFlags: [],
       };
-    } finally {
-      clearTimeout(timeout);
     }
   }
 }

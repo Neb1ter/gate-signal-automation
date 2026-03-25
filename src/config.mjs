@@ -121,7 +121,7 @@ export const config = {
     primaryModel: process.env.AI_PRIMARY_MODEL || process.env.AI_MODEL || "qwen3.5-plus",
     reviewModel: process.env.AI_REVIEW_MODEL || "deepseek-v3.2",
     reviewEnabled: parseBoolean(process.env.AI_REVIEW_SECOND_PASS_ENABLED, true),
-    timeoutMs: parseInteger(process.env.AI_TIMEOUT_MS, 15000),
+    timeoutMs: parseInteger(process.env.AI_TIMEOUT_MS, 30000),
   },
   gate: {
     apiKey: process.env.GATE_API_KEY || "",
