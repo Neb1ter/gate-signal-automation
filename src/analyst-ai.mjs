@@ -292,8 +292,8 @@ export class AnalystAiReviewer {
         provider: this.provider,
         primaryModel: this.primaryModel,
         reviewModel: this.reviewEnabled ? this.reviewModel : "",
-        complianceComment: `AI 缁撴瀯鍖栨湭瀹屾垚锛?{
-          error.name === "AbortError" ? "璇锋眰瓒呮椂" : error.message
+        complianceComment: `AI structuring failed: ${
+          error.name === "AbortError" ? "request timeout" : error.message
         }`,
         riskFlags: [],
       };
