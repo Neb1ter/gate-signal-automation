@@ -16,6 +16,14 @@ function trimAmount(value) {
   return numeric.toFixed(8).replace(/\.?0+$/, "");
 }
 
+function trimInteger(value) {
+  const numeric = Number.parseInt(String(value || "").trim(), 10);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return "";
+  }
+  return String(numeric);
+}
+
 function normalizeBaseUrl(value) {
   return String(value || "")
     .trim()
@@ -155,6 +163,205 @@ export class GateSpotClient {
       ? accounts.find((item) => String(item.currency || "").toUpperCase() === currency)
       : null;
     return trimAmount(record?.available || "");
+  }
+
+  async getFuturesContract(contract, settle = "usdt") {
+    if (!contract) {
+      throw new Error("合约交易缺少合约名称，例如 BTC_USDT");
+    }
+    return this.publicRequest(
+      "GET",
+      `/futures/${encodeURIComponent(settle)}/contracts/${encodeURIComponent(contract)}`,
+      "",
+    );
+  }
+
+  async getFuturesPosition(contract, settle = "usdt") {
+    if (!this.isConfigured()) {
+      throw new Error("读取合约持仓前，需要先配置 Gate API Key / Secret");
+    }
+    return this.request(
+      "GET",
+      `/futures/${encodeURIComponent(settle)}/positions/${encodeURIComponent(contract)}`,
+      "",
+      "",
+    );
+  }
+
+  async updateFuturesLeverage(contract, leverage, settle = "usdt") {
+    const normalizedLeverage = trimInteger(String(leverage || "").replace(/x$/i, ""));
+    if (!normalizedLeverage) {
+      throw new Error("杠杆参数无效，至少需要 1x");
+    }
+    if (this.dryRun) {
+      return {
+        dryRun: true,
+        endpoint: `/futures/${settle}/positions/${contract}/leverage`,
+        leverage: normalizedLeverage,
+      };
+    }
+    if (!this.isConfigured()) {
+      throw new Error("Gate API Key / Secret 尚未配置，暂时无法真实下单");
+    }
+    return this.request(
+      "POST",
+      `/futures/${encodeURIComponent(settle)}/positions/${encodeURIComponent(contract)}/leverage`,
+      `leverage=${encodeURIComponent(normalizedLeverage)}`,
+      "",
+    );
+  }
+
+  estimateFuturesContracts({
+    contractInfo,
+    referencePrice,
+    leverage,
+    marginQuote,
+    suggestedSize,
+  }) {
+    const explicitSize = trimInteger(suggestedSize);
+    if (explicitSize) {
+      return {
+        size: explicitSize,
+        source: "explicit_size",
+      };
+    }
+
+    const multiplier = Number.parseFloat(contractInfo?.quanto_multiplier || "");
+    const numericPrice = Number.parseFloat(referencePrice || "");
+    const numericLeverage = Number.parseFloat(String(leverage || "").replace(/x$/i, ""));
+    const numericMargin = Number.parseFloat(marginQuote || "");
+    if (
+      !Number.isFinite(multiplier) ||
+      multiplier <= 0 ||
+      !Number.isFinite(numericPrice) ||
+      numericPrice <= 0 ||
+      !Number.isFinite(numericLeverage) ||
+      numericLeverage <= 0 ||
+      !Number.isFinite(numericMargin) ||
+      numericMargin <= 0
+    ) {
+      return {
+        size: "",
+        source: "unresolved",
+      };
+    }
+
+    const contracts = Math.max(Math.floor((numericMargin * numericLeverage) / (numericPrice * multiplier)), 1);
+    return {
+      size: String(contracts),
+      source: "margin_estimate",
+    };
+  }
+
+  async previewTrade(action) {
+    if (!action) {
+      return null;
+    }
+
+    if (!String(action.kind || "").startsWith("futures_")) {
+      return {
+        market: "spot",
+        kind: action.kind || "spot_market",
+      };
+    }
+
+    const settle = String(action.settle || "usdt").toLowerCase();
+    const contract = String(action.contract || action.symbol || "").toUpperCase();
+    const contractInfo = await this.getFuturesContract(contract, settle);
+    const referencePrice =
+      Number.parseFloat(action.price || "") ||
+      Number.parseFloat(contractInfo?.mark_price || "") ||
+      Number.parseFloat(contractInfo?.last_price || "") ||
+      0;
+    const leverage = trimInteger(String(action.leverage || "1").replace(/x$/i, "")) || "1";
+    const estimated = this.estimateFuturesContracts({
+      contractInfo,
+      referencePrice,
+      leverage,
+      marginQuote: action.marginQuote || action.amountQuote,
+      suggestedSize: action.size,
+    });
+
+    return {
+      market: "futures",
+      settle,
+      contract,
+      contractInfo,
+      referencePrice: referencePrice ? trimAmount(referencePrice) : "",
+      leverage,
+      estimatedContracts: estimated.size,
+      estimatedFrom: estimated.source,
+      orderType: action.orderType || (String(action.kind || "").includes("limit") ? "limit" : "market"),
+      marginQuote: trimAmount(action.marginQuote || action.amountQuote || ""),
+    };
+  }
+
+  async placeFuturesOrder(action) {
+    const settle = String(action.settle || "usdt").toLowerCase();
+    const contract = String(action.contract || action.symbol || "").toUpperCase();
+    if (!contract) {
+      throw new Error("合约交易缺少合约名称，例如 BTC_USDT");
+    }
+
+    const preview = await this.previewTrade(action);
+    const leverage = preview?.leverage || "1";
+    const unsignedContracts = trimInteger(action.size || preview?.estimatedContracts);
+    if (!unsignedContracts) {
+      throw new Error("未能推导出合约下单数量，请在确认页手动填写“数量（张）”");
+    }
+
+    const signedSize =
+      String(action.side || "").toLowerCase() === "sell" ? -Number(unsignedContracts) : Number(unsignedContracts);
+    const orderType =
+      action.orderType || (String(action.kind || "").includes("limit") ? "limit" : "market");
+    const tif =
+      orderType === "limit"
+        ? String(action.timeInForce || "gtc").toLowerCase()
+        : String(action.timeInForce || "ioc").toLowerCase();
+    const price =
+      orderType === "limit"
+        ? trimAmount(action.price || preview?.referencePrice)
+        : "0";
+
+    if (orderType === "limit" && !price) {
+      throw new Error("限价单需要填写价格");
+    }
+
+    const body = JSON.stringify({
+      contract,
+      size: signedSize,
+      price,
+      tif,
+      text: action.clientOrderId || `t-futures-${Date.now().toString().slice(-8)}`,
+      reduce_only: action.reduceOnly === true,
+    });
+
+    if (this.dryRun) {
+      return {
+        dryRun: true,
+        endpoint: `/futures/${settle}/orders`,
+        leverageRequest: {
+          endpoint: `/futures/${settle}/positions/${contract}/leverage`,
+          leverage,
+        },
+        requestBody: JSON.parse(body),
+        preview,
+      };
+    }
+
+    if (!this.isConfigured()) {
+      throw new Error("Gate API Key / Secret 尚未配置，暂时无法真实下单");
+    }
+
+    await this.updateFuturesLeverage(contract, leverage, settle);
+    return this.request("POST", `/futures/${encodeURIComponent(settle)}/orders`, "", body);
+  }
+
+  async placeTrade(action) {
+    if (String(action?.kind || "").startsWith("futures_")) {
+      return this.placeFuturesOrder(action);
+    }
+    return this.placeSpotMarketOrder(action);
   }
 
   async getSpotTicker(symbol) {

@@ -366,8 +366,8 @@ export function renderAdminPage({
         </div>
         <div class="card">
           <div class="metric-label">Gate 跟单通道</div>
-          <div class="metric-value">${escapeHtml(runtimeSettings.gate?.mode === "testnet" ? "Gate 模拟" : "本地 Dry Run")}</div>
-          <div class="metric-hint">当前运行态：${escapeHtml(runtimeGateMode === "testnet" ? "Gate 模拟交易" : "本地 Dry Run")}</div>
+          <div class="metric-value">${escapeHtml(["testnet", "futures_testnet", "spot_testnet"].includes(runtimeSettings.gate?.mode) ? "Gate 模拟" : "本地 Dry Run")}</div>
+          <div class="metric-hint">当前运行态：${escapeHtml(runtimeGateMode === "futures_testnet" || runtimeGateMode === "testnet" ? "Gate 模拟合约" : runtimeGateMode === "spot_testnet" ? "Gate 模拟现货" : "本地 Dry Run")}</div>
         </div>
       </div>
 
@@ -441,8 +441,9 @@ export function renderAdminPage({
             <div class="field">
               <label for="gateMode">Gate 跟单模式</label>
               <select id="gateMode">
-                <option value="dry_run" ${runtimeSettings.gate?.mode === "testnet" ? "" : "selected"}>本地 Dry Run</option>
-                <option value="testnet" ${runtimeSettings.gate?.mode === "testnet" ? "selected" : ""}>Gate 模拟交易</option>
+                <option value="dry_run" ${["futures_testnet","spot_testnet","testnet"].includes(runtimeSettings.gate?.mode) ? "" : "selected"}>本地 Dry Run</option>
+                <option value="futures_testnet" ${runtimeSettings.gate?.mode === "futures_testnet" || runtimeSettings.gate?.mode === "testnet" ? "selected" : ""}>Gate 模拟合约</option>
+                <option value="spot_testnet" ${runtimeSettings.gate?.mode === "spot_testnet" ? "selected" : ""}>Gate 模拟现货</option>
               </select>
             </div>
             <div class="field">
@@ -948,7 +949,7 @@ export function renderAdminPage({
       aiModel.addEventListener("input", () => { state.ai.model = aiModel.value.trim(); });
       aiApiKey.addEventListener("input", () => { state.ai.apiKey = aiApiKey.value.trim(); });
       aiTimeoutMs.addEventListener("input", () => { state.ai.timeoutMs = aiTimeoutMs.value.trim(); });
-      gateMode.addEventListener("change", () => { state.gate.mode = gateMode.value === "testnet" ? "testnet" : "dry_run"; });
+      gateMode.addEventListener("change", () => { state.gate.mode = gateMode.value || "dry_run"; });
       gateBaseUrl.addEventListener("input", () => { state.gate.baseUrl = gateBaseUrl.value.trim(); });
       gateApiKey.addEventListener("input", () => { state.gate.apiKey = gateApiKey.value.trim(); });
       gateApiSecret.addEventListener("input", () => { state.gate.apiSecret = gateApiSecret.value.trim(); });

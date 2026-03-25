@@ -114,7 +114,7 @@ export async function buildAnalystMetrics({
       deliveryDisplayName: signal.deliveryDisplayName || signal.displaySourceName || signal.sourceName,
       symbol: signal.tradeIdea?.symbol,
       side: signal.tradeIdea?.side,
-      mode: "testnet",
+      mode: "futures_testnet",
       orderId: String(signal.executionResult?.result?.id || ""),
       orderStatus: String(signal.executionResult?.result?.status || ""),
       finishAs: String(signal.executionResult?.result?.finish_as || ""),

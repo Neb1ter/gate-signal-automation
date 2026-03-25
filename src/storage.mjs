@@ -73,9 +73,10 @@ function normalizeAiSettings(value, defaults = {}) {
 
 function normalizeGateSettings(value, defaults = {}) {
   const source = value || {};
-  const mode = String(source.mode ?? defaults.mode ?? "dry_run").trim();
+  const rawMode = String(source.mode ?? defaults.mode ?? "dry_run").trim();
+  const mode = rawMode === "testnet" ? "futures_testnet" : rawMode;
   return {
-    mode: ["dry_run", "testnet"].includes(mode) ? mode : "dry_run",
+    mode: ["dry_run", "spot_testnet", "futures_testnet"].includes(mode) ? mode : "dry_run",
     apiKey: String(source.apiKey ?? defaults.apiKey ?? "").trim(),
     apiSecret: String(source.apiSecret ?? defaults.apiSecret ?? "").trim(),
     baseUrl: String(source.baseUrl ?? defaults.baseUrl ?? "").trim(),

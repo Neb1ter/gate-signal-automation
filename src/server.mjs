@@ -69,7 +69,7 @@ const defaultRuntimeSettings = {
     timeoutMs: config.ai.timeoutMs,
   },
   gate: {
-    mode: config.dryRun ? "dry_run" : "testnet",
+    mode: config.dryRun ? "dry_run" : "futures_testnet",
     apiKey: config.gate.apiKey,
     apiSecret: config.gate.apiSecret,
     baseUrl: config.gate.baseUrl,
@@ -91,13 +91,15 @@ function createGateClient(runtimeSettings = getRuntimeSettings()) {
   const gateSettings = runtimeSettings.gate || {};
   const baseUrl =
     gateSettings.baseUrl ||
-    (gateSettings.mode === "testnet" ? "https://api-testnet.gateapi.io" : config.gate.baseUrl);
+    (["testnet", "spot_testnet", "futures_testnet"].includes(gateSettings.mode)
+      ? "https://api-testnet.gateapi.io"
+      : config.gate.baseUrl);
 
   return new GateSpotClient({
     apiKey: gateSettings.apiKey || config.gate.apiKey,
     apiSecret: gateSettings.apiSecret || config.gate.apiSecret,
     baseUrl,
-    dryRun: gateSettings.mode !== "testnet",
+    dryRun: !["testnet", "spot_testnet", "futures_testnet"].includes(gateSettings.mode),
   });
 }
 
@@ -227,6 +229,45 @@ function parseFormBody(request) {
     });
     request.on("error", reject);
   });
+}
+
+function applyManualTradeOverrides(signal, form = {}) {
+  if (!signal?.tradeIdea) {
+    return signal;
+  }
+
+  const nextTradeIdea = {
+    ...signal.tradeIdea,
+    orderType: ["market", "limit"].includes(String(form.orderType || "").toLowerCase())
+      ? String(form.orderType).toLowerCase()
+      : signal.tradeIdea.orderType || "market",
+    side: ["buy", "sell"].includes(String(form.side || "").toLowerCase())
+      ? String(form.side).toLowerCase()
+      : signal.tradeIdea.side,
+    leverage: String(form.leverage || signal.tradeIdea.leverage || "5").replace(/x$/i, ""),
+    size: String(form.size || signal.tradeIdea.size || "").trim(),
+    price: String(form.price || signal.tradeIdea.price || "").trim(),
+    marginQuote: String(
+      form.marginQuote || signal.tradeIdea.marginQuote || signal.tradeIdea.amountQuote || "",
+    ).trim(),
+    contract: String(form.contract || signal.tradeIdea.contract || signal.tradeIdea.symbol || "").trim(),
+    symbol: String(form.symbol || signal.tradeIdea.symbol || signal.tradeIdea.contract || "").trim(),
+    settle: String(form.settle || signal.tradeIdea.settle || "usdt").trim().toLowerCase(),
+  };
+
+  nextTradeIdea.kind = nextTradeIdea.orderType === "limit" ? "futures_limit" : "futures_market";
+  nextTradeIdea.timeInForce =
+    nextTradeIdea.orderType === "limit"
+      ? String(form.timeInForce || signal.tradeIdea.timeInForce || "gtc").toLowerCase()
+      : "ioc";
+  nextTradeIdea.summary = `${nextTradeIdea.side === "buy" ? "合约做多" : "合约做空"} ${nextTradeIdea.symbol}，${
+    nextTradeIdea.orderType === "limit" ? "限价单" : "市价单"
+  }，${nextTradeIdea.leverage}x 杠杆，${
+    nextTradeIdea.size ? `数量 ${nextTradeIdea.size} 张` : `保证金 ${nextTradeIdea.marginQuote} USDT`
+  }${nextTradeIdea.orderType === "limit" && nextTradeIdea.price ? `，价格 ${nextTradeIdea.price}` : ""}`;
+
+  signal.tradeIdea = nextTradeIdea;
+  return signal;
 }
 
 function signApprovalToken(signalId) {
@@ -479,7 +520,7 @@ async function executeSignal(signal, trigger) {
   }
 
   try {
-    const result = await gateClient.placeSpotMarketOrder(signal.tradeIdea);
+    const result = await gateClient.placeTrade(signal.tradeIdea);
     const executionResult = {
       status: gateClient.dryRun ? "dry_run" : "submitted",
       trigger,
@@ -500,11 +541,13 @@ async function executeSignal(signal, trigger) {
       0;
     const filledBaseQty =
       Number.parseFloat(result?.filled_amount || "") ||
+      Number.parseFloat(result?.size || "") ||
       Number.parseFloat(result?.amount || "") ||
       0;
     const filledQuoteQty =
       Number.parseFloat(result?.filled_total || "") ||
-      Number.parseFloat(signal.tradeIdea.amountQuote || "") ||
+      Number.parseFloat(result?.value || "") ||
+      Number.parseFloat(signal.tradeIdea.marginQuote || signal.tradeIdea.amountQuote || "") ||
       0;
     store.appendTrade({
       createdAt: executionResult.at,
@@ -515,7 +558,7 @@ async function executeSignal(signal, trigger) {
       deliveryDisplayName: signal.deliveryDisplayName || signal.displaySourceName || signal.sourceName,
       symbol: signal.tradeIdea.symbol,
       side: signal.tradeIdea.side,
-      mode: gateClient.dryRun ? "dry_run" : "testnet",
+      mode: gateClient.dryRun ? "dry_run" : "futures_testnet",
       orderId: String(result?.id || ""),
       orderStatus: String(result?.status || ""),
       finishAs: String(result?.finish_as || ""),
@@ -526,7 +569,7 @@ async function executeSignal(signal, trigger) {
       fee: feeValue,
       feeCurrency: String(result?.fee_currency || ""),
       notionalUsd:
-        Number.parseFloat(signal.tradeIdea.amountQuote || "") ||
+        Number.parseFloat(signal.tradeIdea.marginQuote || signal.tradeIdea.amountQuote || "") ||
         Number.parseFloat(signal.tradeIdea.amountBase || "") ||
         0,
     });
@@ -680,7 +723,7 @@ async function startTelegramUserStream() {
   telegramRuntime.lastError = "";
 }
 
-async function handleSignalAction(signalId, action) {
+async function handleSignalAction(signalId, action, form = {}) {
   const signal = store.getSignal(signalId);
   if (!signal) {
     return {
@@ -752,6 +795,10 @@ async function handleSignalAction(signalId, action) {
 
   signal.reviewedAt = new Date().toISOString();
   signal.reviewDecision = action;
+  if (action === "approve") {
+    applyManualTradeOverrides(signal, form);
+    store.upsertSignal(signal);
+  }
   const executionResult = await executeSignal(signal, "manual_approval");
 
   return {
@@ -961,7 +1008,8 @@ const server = http.createServer(async (request, response) => {
         json(response, 401, { error: "Invalid approval token" });
         return;
       }
-      html(response, 200, renderSignalReviewPage(signal, token));
+      const preview = signal.tradeIdea ? await createGateClient(getRuntimeSettings()).previewTrade(signal.tradeIdea) : null;
+      html(response, 200, renderSignalReviewPage(signal, token, { preview }));
       return;
     }
 
@@ -974,7 +1022,8 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      const actionResult = await handleSignalAction(signalId, action);
+      const form = request.method === "POST" ? await parseFormBody(request) : {};
+      const actionResult = await handleSignalAction(signalId, action, form);
       html(
         response,
         actionResult.statusCode,
