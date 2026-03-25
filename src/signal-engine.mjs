@@ -800,7 +800,7 @@ function buildPlaybookTradeIdeaV2(playbook, asset, analysis) {
   if (analysis?.entryText) {
     detailParts.push(`入场 ${analysis.entryText}`);
   }
-  if (analysis?.stopLoss !== null) {
+  if (analysis?.stopLoss != null) {
     detailParts.push(`止损 ${analysis.stopLoss}`);
   }
   if (analysis?.takeProfits?.length) {
@@ -853,7 +853,7 @@ function buildPlaybookTradeIdea(playbook, asset, analysis) {
   if (analysis?.entryText) {
     detailParts.push(`入场 ${analysis.entryText}`);
   }
-  if (analysis?.stopLoss !== null) {
+  if (analysis?.stopLoss != null) {
     detailParts.push(`止损 ${analysis.stopLoss}`);
   }
   if (analysis?.takeProfits?.length) {
