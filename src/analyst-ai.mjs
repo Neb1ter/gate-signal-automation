@@ -71,6 +71,10 @@ function mergeArrays(...lists) {
   return [...new Set(lists.flatMap((list) => normalizeArray(list)))];
 }
 
+function buildAiErrorMessage(error) {
+  return error?.name === "AbortError" ? "request timeout" : String(error?.message || "unknown error");
+}
+
 function mergeObjects(primary = {}, review = {}) {
   return {
     ...primary,
@@ -270,31 +274,43 @@ export class AnalystAiReviewer {
         this.primaryModel,
         buildPrimaryMessages(signal),
       );
-
-      let merged = primaryRaw;
-      if (this.reviewEnabled && this.reviewModel) {
-        const reviewRaw = await this.callModelWithTimeout(
-          this.reviewModel,
-          buildReviewMessages(signal, primaryRaw),
-        );
-        merged = mergeObjects(primaryRaw, reviewRaw);
-      }
-
-      return normalizeResult(merged, {
+      const meta = {
         provider: this.provider,
         primaryModel: this.primaryModel,
         reviewModel: this.reviewModel,
         reviewEnabled: this.reviewEnabled,
-      });
+      };
+
+      if (!(this.reviewEnabled && this.reviewModel)) {
+        return normalizeResult(primaryRaw, meta);
+      }
+
+      try {
+        const reviewRaw = await this.callModelWithTimeout(
+          this.reviewModel,
+          buildReviewMessages(signal, primaryRaw),
+        );
+        const merged = mergeObjects(primaryRaw, reviewRaw);
+        return normalizeResult(merged, meta);
+      } catch (reviewError) {
+        const fallback = normalizeResult(primaryRaw, {
+          ...meta,
+          reviewEnabled: false,
+        });
+        fallback.parser = `ai-${String(this.primaryModel).toLowerCase()}-fallback`;
+        fallback.reviewModel = this.reviewModel;
+        fallback.automationReady = false;
+        fallback.complianceComment = `AI review fallback: second-pass model failed (${buildAiErrorMessage(reviewError)}). Using primary extraction only.`;
+        fallback.riskFlags = mergeArrays(fallback.riskFlags, ["AI second-pass review failed"]);
+        return fallback;
+      }
     } catch (error) {
       return {
         parser: "ai-review-error",
         provider: this.provider,
         primaryModel: this.primaryModel,
         reviewModel: this.reviewEnabled ? this.reviewModel : "",
-        complianceComment: `AI structuring failed: ${
-          error.name === "AbortError" ? "request timeout" : error.message
-        }`,
+        complianceComment: `AI structuring failed: ${buildAiErrorMessage(error)}`,
         riskFlags: [],
       };
     }
