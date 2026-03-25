@@ -430,7 +430,7 @@ function buildDefaultTradeIdea(baseSignal, analysis, selectedPlaybook) {
     side,
     timeInForce: defaults.timeInForce || "ioc",
     account: defaults.account || "spot",
-    clientOrderId: `a-${Date.now().toString().slice(-8)}`,
+    clientOrderId: `t-analyst-${Date.now().toString().slice(-8)}`,
   };
 
   if (side === "buy") {
