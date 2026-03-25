@@ -855,14 +855,15 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "GET" && url.pathname === "/health") {
+      const runtimeGateMode = getRuntimeSettings().gate?.mode || "dry_run";
       json(response, 200, {
         ok: true,
         host: config.host,
         publicBaseUrl: config.publicBaseUrl,
-        dryRun: config.dryRun,
+        dryRun: !["testnet", "spot_testnet", "futures_testnet"].includes(runtimeGateMode),
         autoExecutionEnabled: config.autoExecutionEnabled,
         runtimeAiEnabled: getRuntimeSettings().ai?.enabled || false,
-        runtimeGateMode: getRuntimeSettings().gate?.mode || "dry_run",
+        runtimeGateMode,
         telegramMode:
           config.telegram.sourceMode === "user" ? "user-stream" : config.telegram.mode,
         telegramSourceMode: config.telegram.sourceMode,
@@ -878,6 +879,7 @@ const server = http.createServer(async (request, response) => {
       if (!requireAdmin(request, response, url)) {
         return;
       }
+      const runtimeGateMode = getRuntimeSettings().gate?.mode || "dry_run";
       const analystMetrics = await buildAnalystMetrics({
         runtimeSettings: getRuntimeSettings(),
         knownChats: store.listKnownTelegramChats(),
@@ -894,10 +896,10 @@ const server = http.createServer(async (request, response) => {
           knownChats: store.listKnownTelegramChats(),
           configuredChatLabels,
           signalCount: store.listSignals().length,
-          dryRun: config.dryRun,
+          dryRun: !["testnet", "spot_testnet", "futures_testnet"].includes(runtimeGateMode),
           autoExecutionEnabled: config.autoExecutionEnabled,
           runtimeAiEnabled: getRuntimeSettings().ai?.enabled || false,
-          runtimeGateMode: getRuntimeSettings().gate?.mode || "dry_run",
+          runtimeGateMode,
           defaultFeishuConfigured: Boolean(config.feishu.webhookUrl),
           telegramSourceMode: config.telegram.sourceMode,
           telegramRuntimeSummary: getTelegramRuntimeSummary(),
