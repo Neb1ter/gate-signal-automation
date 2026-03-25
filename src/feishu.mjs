@@ -60,6 +60,69 @@ function escapeMarkdown(value) {
     .replaceAll("]", "\\]");
 }
 
+function formatSignalDirection(signal) {
+  const normalized = String(signal.analysis?.direction || "").toLowerCase();
+  if (normalized === "buy") {
+    return signal.analysis?.directionLabel || "做多";
+  }
+  if (normalized === "sell") {
+    return signal.analysis?.directionLabel || "做空 / 减仓";
+  }
+  if (signal.sourceType === "news") {
+    return "消息触发";
+  }
+  return signal.analysis?.directionLabel || "观点更新";
+}
+
+function formatSignalAsset(signal) {
+  if (signal.analysis?.asset) {
+    return String(signal.analysis.asset).toUpperCase();
+  }
+  if (signal.tradeIdea?.symbol) {
+    return String(signal.tradeIdea.symbol).split("_")[0]?.toUpperCase() || "未识别标的";
+  }
+  return "未识别标的";
+}
+
+function buildSignalTitle(signal, displaySource) {
+  if (signal.sourceType !== "analyst") {
+    return signal.tradeIdea?.symbol
+      ? `新闻交易提醒｜${signal.tradeIdea.symbol}`
+      : "新闻交易提醒";
+  }
+
+  const asset = formatSignalAsset(signal);
+  const direction = formatSignalDirection(signal);
+  return `${displaySource}｜${asset} ${direction}`;
+}
+
+function buildSignalHeadline(signal) {
+  const asset = formatSignalAsset(signal);
+  const direction = formatSignalDirection(signal);
+  const typeLabel =
+    signal.analysis?.messageType === "strategy"
+      ? "策略"
+      : signal.analysis?.messageType === "analysis"
+        ? "分析"
+        : signal.analysis?.messageType === "watchlist"
+          ? "观察"
+          : signal.sourceType === "news"
+            ? "快讯"
+            : "提醒";
+  return `# ${escapeMarkdown(asset)} ${escapeMarkdown(direction)}${escapeMarkdown(typeLabel)}`;
+}
+
+function pickSignalTemplate(signal) {
+  const direction = String(signal.analysis?.direction || signal.tradeIdea?.side || "").toLowerCase();
+  if (direction === "sell") {
+    return "red";
+  }
+  if (direction === "buy") {
+    return "green";
+  }
+  return signal.sourceType === "analyst" ? "blue" : "turquoise";
+}
+
 function buildSignalContent(signal, options = {}) {
   const needsDecision = signal.executionStatus === "pending_approval";
   const displaySource = getDisplaySource(signal, options);
@@ -76,23 +139,27 @@ function buildSignalContent(signal, options = {}) {
     summaryLines.push(`- **说明**：${escapeMarkdown(signal.executionReason)}`);
   }
 
-  const sections = ["**策略总览**", ...summaryLines];
+  const sections = [buildSignalHeadline(signal), "", "## 策略总览", ...summaryLines];
 
   if (signal.analysis?.normalizedSummary) {
     const structuredLines = String(signal.analysis.normalizedSummary)
       .split("\n")
       .filter(Boolean)
       .map((line) => `- ${escapeMarkdown(line)}`);
-    sections.push("", "**结构化摘要**", ...structuredLines);
+    sections.push("", "## 结构化摘要", ...structuredLines);
   }
 
   const body = getDisplayText(signal);
   if (body) {
-    sections.push("", "**脱敏原文**", `> ${escapeMarkdown(truncateText(body, 2200)).replaceAll("\n", "\n> ")}`);
+    sections.push(
+      "",
+      "## 转发正文",
+      `> ${escapeMarkdown(truncateText(body, 2200)).replaceAll("\n", "\n> ")}`,
+    );
   }
 
   if (needsDecision) {
-    sections.push("", "_点按钮进入中文决策页，再决定是否跟单。_");
+    sections.push("", "## 操作建议", "_点按钮进入中文决策页，再决定是否跟单。_");
   }
 
   return sections.join("\n");
@@ -101,7 +168,8 @@ function buildSignalContent(signal, options = {}) {
 function buildExecutionContent(signal, result, options = {}) {
   const displaySource = getDisplaySource(signal, options);
   return [
-    "**执行结果**",
+    `# ${escapeMarkdown(formatSignalAsset(signal))} 执行结果`,
+    "",
     `- **信号 ID**：${escapeMarkdown(signal.id)}`,
     `- **来源分组**：${escapeMarkdown(displaySource)}`,
     `- **执行状态**：${escapeMarkdown(formatResultStatus(result.status))}`,
@@ -240,8 +308,7 @@ export class FeishuNotifier {
     const approveUrl = this.buildApproveUrl(signal.id, approvalToken);
     const rejectUrl = this.buildRejectUrl(signal.id, approvalToken);
     const displaySource = getDisplaySource(signal, options);
-    const title =
-      signal.sourceType === "analyst" ? `${displaySource} 策略提醒` : "新闻交易提醒";
+    const title = buildSignalTitle(signal, displaySource);
     const content = buildSignalContent(signal, options);
 
     if (this.isBotWebhook(webhookUrl)) {
@@ -260,7 +327,7 @@ export class FeishuNotifier {
           title,
           content,
           buttons,
-          template: signal.sourceType === "analyst" ? "blue" : "green",
+          template: pickSignalTemplate(signal),
         }),
         webhookUrl,
       );

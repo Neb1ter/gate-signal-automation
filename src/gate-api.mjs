@@ -16,11 +16,18 @@ function trimAmount(value) {
   return numeric.toFixed(8).replace(/\.?0+$/, "");
 }
 
+function normalizeBaseUrl(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\/api\/v4\/?$/i, "")
+    .replace(/\/$/, "");
+}
+
 export class GateSpotClient {
   constructor({ apiKey, apiSecret, baseUrl, dryRun }) {
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
-    this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.baseUrl = normalizeBaseUrl(baseUrl);
     this.prefix = "/api/v4";
     this.dryRun = dryRun;
   }
