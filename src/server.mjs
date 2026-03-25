@@ -528,6 +528,22 @@ async function notifySignal(signal) {
   await feishuNotifier.sendSignalCard(signal, approvalToken, deliveryOptions);
 }
 
+async function safeNotifySignal(signal) {
+  try {
+    await notifySignal(signal);
+  } catch (error) {
+    console.warn(`[notify] signal ${signal.id} failed: ${error.message}`);
+  }
+}
+
+async function safeNotifyExecutionResult(signal, executionResult, deliveryOptions) {
+  try {
+    await feishuNotifier.sendExecutionResult(signal, executionResult, deliveryOptions);
+  } catch (error) {
+    console.warn(`[notify] execution ${signal.id} failed: ${error.message}`);
+  }
+}
+
 async function executeSignal(signal, trigger) {
   const runtimeSettings = getRuntimeSettings();
   const gateClient = createGateClient(runtimeSettings);
@@ -593,7 +609,7 @@ async function executeSignal(signal, trigger) {
         Number.parseFloat(signal.tradeIdea.amountBase || "") ||
         0,
     });
-    await feishuNotifier.sendExecutionResult(signal, executionResult, deliveryOptions);
+    await safeNotifyExecutionResult(signal, executionResult, deliveryOptions);
     return executionResult;
   } catch (error) {
     const executionResult = {
@@ -605,7 +621,7 @@ async function executeSignal(signal, trigger) {
     signal.executionStatus = "execution_failed";
     signal.executionResult = executionResult;
     store.upsertSignal(signal);
-    await feishuNotifier.sendExecutionResult(signal, executionResult, deliveryOptions);
+    await safeNotifyExecutionResult(signal, executionResult, deliveryOptions);
     return executionResult;
   }
 }
@@ -627,7 +643,7 @@ async function processBaseSignal(baseSignal) {
   const deliveryOptions = getSignalDeliveryOptions(signal);
   signal.deliveryDisplayName = deliveryOptions.displayName || signal.displaySourceName;
   store.upsertSignal(signal);
-  await notifySignal(signal);
+  await safeNotifySignal(signal);
 
   if (signal.executionStatus === "ready_for_execution") {
     const executionResult = await executeSignal(signal, "auto");
@@ -785,7 +801,7 @@ async function handleSignalAction(signalId, action, form = {}) {
     signal.executionStatus = "rejected";
     signal.executionResult = executionResult;
     store.upsertSignal(signal);
-    await feishuNotifier.sendExecutionResult(signal, executionResult);
+    await safeNotifyExecutionResult(signal, executionResult);
 
     return {
       statusCode: 200,
