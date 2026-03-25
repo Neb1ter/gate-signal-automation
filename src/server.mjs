@@ -232,34 +232,51 @@ function parseFormBody(request) {
 }
 
 function applyManualTradeOverrides(signal, form = {}) {
-  if (!signal?.tradeIdea) {
+  if (!signal) {
     return signal;
   }
 
+  const existingTradeIdea = signal.tradeIdea || {};
+  const fallbackSymbol = String(
+    form.symbol ||
+      existingTradeIdea.symbol ||
+      existingTradeIdea.contract ||
+      signal.analysis?.symbol ||
+      "",
+  )
+    .trim()
+    .toUpperCase();
+  const fallbackContract = String(form.contract || existingTradeIdea.contract || fallbackSymbol)
+    .trim()
+    .toUpperCase();
+
   const nextTradeIdea = {
-    ...signal.tradeIdea,
+    ...existingTradeIdea,
     orderType: ["market", "limit"].includes(String(form.orderType || "").toLowerCase())
       ? String(form.orderType).toLowerCase()
-      : signal.tradeIdea.orderType || "market",
+      : existingTradeIdea.orderType || "market",
     side: ["buy", "sell"].includes(String(form.side || "").toLowerCase())
       ? String(form.side).toLowerCase()
-      : signal.tradeIdea.side,
-    leverage: String(form.leverage || signal.tradeIdea.leverage || "20").replace(/x$/i, ""),
-    size: String(form.size || signal.tradeIdea.size || "").trim(),
-    price: String(form.price || signal.tradeIdea.price || "").trim(),
+      : existingTradeIdea.side || "buy",
+    leverage: String(form.leverage || existingTradeIdea.leverage || "20").replace(/x$/i, ""),
+    size: String(form.size || existingTradeIdea.size || "").trim(),
+    price: String(form.price || existingTradeIdea.price || "").trim(),
     marginQuote: String(
-      form.marginQuote || signal.tradeIdea.marginQuote || signal.tradeIdea.amountQuote || "",
+      form.marginQuote || existingTradeIdea.marginQuote || existingTradeIdea.amountQuote || "",
     ).trim(),
-    contract: String(form.contract || signal.tradeIdea.contract || signal.tradeIdea.symbol || "").trim(),
-    symbol: String(form.symbol || signal.tradeIdea.symbol || signal.tradeIdea.contract || "").trim(),
-    settle: String(form.settle || signal.tradeIdea.settle || "usdt").trim().toLowerCase(),
+    contract: fallbackContract,
+    symbol: fallbackSymbol,
+    settle: String(form.settle || existingTradeIdea.settle || "usdt").trim().toLowerCase(),
   };
 
   nextTradeIdea.kind = nextTradeIdea.orderType === "limit" ? "futures_limit" : "futures_market";
   nextTradeIdea.timeInForce =
     nextTradeIdea.orderType === "limit"
-      ? String(form.timeInForce || signal.tradeIdea.timeInForce || "gtc").toLowerCase()
+      ? String(form.timeInForce || existingTradeIdea.timeInForce || "gtc").toLowerCase()
       : "ioc";
+  nextTradeIdea.account = "futures";
+  nextTradeIdea.clientOrderId =
+    existingTradeIdea.clientOrderId || `t-manual-${Date.now().toString().slice(-8)}`;
   nextTradeIdea.summary = `${nextTradeIdea.side === "buy" ? "合约做多" : "合约做空"} ${nextTradeIdea.symbol}，${
     nextTradeIdea.orderType === "limit" ? "限价单" : "市价单"
   }，${nextTradeIdea.leverage}x 杠杆，${

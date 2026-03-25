@@ -1242,6 +1242,8 @@ function renderSignalReviewPageV2(signal, token, options = {}) {
   const size = tradeIdea.size || preview.estimatedContracts || "";
   const price = tradeIdea.price || preview.referencePrice || "";
   const marginQuote = tradeIdea.marginQuote || tradeIdea.amountQuote || preview.marginQuote || "";
+  const symbol = String(tradeIdea.symbol || signal.analysis?.symbol || "").toUpperCase();
+  const contract = String(tradeIdea.contract || symbol || "").toUpperCase();
   const leverageHint =
     preview?.leverageSource === "current_position"
       ? `检测到 ${tradeIdea.symbol || preview.contract || "当前合约"} 已有仓位，默认沿用当前杠杆 ${leverage}x。`
@@ -1308,6 +1310,16 @@ function renderSignalReviewPageV2(signal, token, options = {}) {
       <form method="post" action="/signals/${signal.id}/approve?token=${encodeURIComponent(token)}">
         <div class="form-grid">
           <div class="field-card">
+            <label for="symbol">甯佺 / 鍚堢害</label>
+            <input id="symbol" name="symbol" type="text" placeholder="渚嬪 BTC_USDT" value="${escapeHtml(symbol)}" />
+            <div class="hint">濡傛灉鍒嗘瀽甯堥暱鏂囨病鏈夋槑纭瘑鍒嚭甯佺锛屼綘鍙互鐩存帴鎵嬪姩濉啓銆?/div>
+          </div>
+          <div class="field-card">
+            <label for="contract">瀹為檯涓嬪崟鍚堢害</label>
+            <input id="contract" name="contract" type="text" placeholder="榛樿涓庝笂闈㈢殑甯佺涓€鑷?" value="${escapeHtml(contract)}" />
+            <div class="hint">鍚堢害妯″紡涓嬮€氬父涓庝笂闈㈢殑甯佺涓€鑷达紱濡傛灉浣犳兂鎵嬪姩鍒囨崲鍚堢害锛屽彲浠ュ湪杩欓噷鏀广€?/div>
+          </div>
+          <div class="field-card">
             <label for="orderType">订单类型</label>
             <select id="orderType" name="orderType">
               <option value="market" ${orderType === "market" ? "selected" : ""}>市价单</option>
@@ -1340,8 +1352,6 @@ function renderSignalReviewPageV2(signal, token, options = {}) {
             <input id="marginQuote" name="marginQuote" type="number" min="0" step="0.01" value="${escapeHtml(marginQuote)}" />
             <div class="hint">如果你不手填数量，系统会用 保证金 × 杠杆 / 合约面值 估算张数。</div>
           </div>
-          <input type="hidden" name="symbol" value="${escapeHtml(tradeIdea.symbol || "")}" />
-          <input type="hidden" name="contract" value="${escapeHtml(tradeIdea.contract || tradeIdea.symbol || "")}" />
           <input type="hidden" name="settle" value="${escapeHtml(tradeIdea.settle || "usdt")}" />
           <input type="hidden" name="timeInForce" value="${escapeHtml(tradeIdea.timeInForce || "")}" />
           <div class="field-card full">
