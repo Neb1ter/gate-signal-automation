@@ -17,6 +17,11 @@ import {
   reconcileAnalystSignalWithAi,
 } from "./signal-engine.mjs";
 import { JsonStore } from "./storage.mjs";
+import {
+  buildAnalystRouteDisplayName,
+  coerceCleanChineseText,
+  resolveAnalystRouteDisplayName,
+} from "./text-clean.mjs";
 import { createTelegramSource } from "./telegram.mjs";
 
 ensureRuntimeDirs();
@@ -35,6 +40,19 @@ const telegramRuntime = {
 };
 
 const configuredChatLabels = {
+  "-1003758464445": "Get8.Pro",
+  "-1003720685651": "Get8.Pro_News",
+  "-1003093807993": "舒琴",
+  "-1003358734784": "零下二度",
+  "-1002953601978": "易盈社区-所长",
+  "-1003435926001": "三马哥",
+  "-1003162264989": "洪七公",
+  "-1003300637347": "btc乔乔",
+  "-1003044946193": "大漂亮策略早知道",
+  "-1003547241758": "熬鹰资本",
+};
+
+const normalizedChatLabels = {
   "-1003758464445": "Get8.Pro",
   "-1003720685651": "Get8.Pro_News",
   "-1003093807993": "舒琴",
@@ -118,7 +136,7 @@ function getEffectiveTelegramConfig() {
 }
 
 function getConfiguredChatLabel(chatId) {
-  return configuredChatLabels[String(chatId || "")] || "";
+  return coerceCleanChineseText(normalizedChatLabels[String(chatId || "")], "");
 }
 
 function getAnalystRoute(chatId) {
@@ -157,12 +175,55 @@ function getTelegramMessage(update) {
   return update?.channel_post || update?.message || update?.edited_channel_post || null;
 }
 
+function getSignalDeliveryOptionsSafe(signal) {
+  if (signal.sourceType !== "analyst") {
+    const cleanName = coerceCleanChineseText(signal.sourceName, signal.sourceName || "信号来源");
+    return {
+      webhookUrl: "",
+      displayName: cleanName,
+      routeLabel: cleanName,
+    };
+  }
+
+  const route = getAnalystRoute(signal.chatId);
+  const routeLabel =
+    getConfiguredChatLabel(signal.chatId) ||
+    coerceCleanChineseText(signal.sourceName, "") ||
+    signal.chatId ||
+    "分析师群";
+
+  return {
+    webhookUrl: route?.webhookUrl || "",
+    displayName:
+      resolveAnalystRouteDisplayName(route?.displayName, {
+        chatId: signal.chatId,
+        label: routeLabel,
+        title: signal.sourceName,
+      }) ||
+      buildAnalystRouteDisplayName(signal.chatId, routeLabel) ||
+      buildAnalystPrivacyAlias(signal.chatId),
+    routeLabel,
+  };
+}
+
 function getTelegramRuntimeSummary() {
   if (telegramRuntime.ready) {
     return telegramRuntime.identity || "已连接";
   }
   if (telegramRuntime.lastError) {
     return telegramRuntime.lastError;
+  }
+  return config.telegram.sourceMode === "user"
+    ? "尚未连接 Telegram 个人号"
+    : "尚未连接 Telegram Bot";
+}
+
+function getTelegramRuntimeSummarySafe() {
+  if (telegramRuntime.ready) {
+    return coerceCleanChineseText(telegramRuntime.identity, "已连接");
+  }
+  if (telegramRuntime.lastError) {
+    return coerceCleanChineseText(telegramRuntime.lastError, "Telegram 连接异常");
   }
   return config.telegram.sourceMode === "user"
     ? "尚未连接 Telegram 个人号"
@@ -529,7 +590,7 @@ function renderPendingQueuePage(pendingSignals) {
 
 async function notifySignal(signal) {
   const approvalToken = signApprovalToken(signal.id);
-  const deliveryOptions = getSignalDeliveryOptions(signal);
+  const deliveryOptions = getSignalDeliveryOptionsSafe(signal);
   await feishuNotifier.sendSignalCard(signal, approvalToken, deliveryOptions);
 }
 
@@ -626,7 +687,7 @@ async function finalizeSignalProcessing(signalId) {
     reconcileAnalystSignalWithAi(signal, runtimeSettings, config, store);
   }
 
-  const deliveryOptions = getSignalDeliveryOptions(signal);
+  const deliveryOptions = getSignalDeliveryOptionsSafe(signal);
   signal.deliveryDisplayName = deliveryOptions.displayName || signal.displaySourceName;
   store.upsertSignal(signal);
 
@@ -656,7 +717,7 @@ async function finalizeSignalProcessing(signalId) {
 async function executeSignal(signal, trigger) {
   const runtimeSettings = getRuntimeSettings();
   const gateClient = createGateClient(runtimeSettings);
-  const deliveryOptions = getSignalDeliveryOptions(signal);
+  const deliveryOptions = getSignalDeliveryOptionsSafe(signal);
   if (!signal.tradeIdea) {
     return {
       status: "skipped",
@@ -1086,7 +1147,7 @@ const server = http.createServer(async (request, response) => {
           config.telegram.sourceMode === "user" ? "user-stream" : config.telegram.mode,
         telegramSourceMode: config.telegram.sourceMode,
         telegramReady: telegramRuntime.ready,
-        telegramRuntime: getTelegramRuntimeSummary(),
+        telegramRuntime: getTelegramRuntimeSummarySafe(),
         signalCount: store.listSignals().length,
         knownTelegramChats: store.listKnownTelegramChats().length,
       });
@@ -1101,7 +1162,7 @@ const server = http.createServer(async (request, response) => {
       const analystMetrics = await buildAnalystMetrics({
         runtimeSettings: getRuntimeSettings(),
         knownChats: store.listKnownTelegramChats(),
-        configuredChatLabels,
+        configuredChatLabels: normalizedChatLabels,
         trades: store.listTrades(),
         signals: store.listSignals(),
         gateClient: createGateClient(getRuntimeSettings()),
@@ -1112,7 +1173,7 @@ const server = http.createServer(async (request, response) => {
         renderAdminPage({
           runtimeSettings: getRuntimeSettings(),
           knownChats: store.listKnownTelegramChats(),
-          configuredChatLabels,
+          configuredChatLabels: normalizedChatLabels,
           signalCount: store.listSignals().length,
           dryRun: !["testnet", "spot_testnet", "futures_testnet"].includes(runtimeGateMode),
           autoExecutionEnabled: config.autoExecutionEnabled,
@@ -1120,7 +1181,7 @@ const server = http.createServer(async (request, response) => {
           runtimeGateMode,
           defaultFeishuConfigured: Boolean(config.feishu.webhookUrl),
           telegramSourceMode: config.telegram.sourceMode,
-          telegramRuntimeSummary: getTelegramRuntimeSummary(),
+          telegramRuntimeSummary: getTelegramRuntimeSummarySafe(),
           analystMetrics,
           port: config.port,
           publicBaseUrl: config.publicBaseUrl,
@@ -1181,7 +1242,7 @@ const server = http.createServer(async (request, response) => {
       const analystMetrics = await buildAnalystMetrics({
         runtimeSettings: getRuntimeSettings(),
         knownChats: store.listKnownTelegramChats(),
-        configuredChatLabels,
+        configuredChatLabels: normalizedChatLabels,
         trades: store.listTrades(),
         signals: store.listSignals(),
         gateClient: createGateClient(getRuntimeSettings()),

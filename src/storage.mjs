@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { coerceCleanChineseText } from "./text-clean.mjs";
+
 function normalizeIdList(value) {
   return [...new Set((value || []).map((item) => String(item).trim()).filter(Boolean))];
 }
@@ -19,7 +21,7 @@ function normalizeAnalystRoutes(value) {
     normalized.push({
       chatId,
       webhookUrl: String(item?.webhookUrl || "").trim(),
-      displayName: String(item?.displayName || "").trim(),
+      displayName: coerceCleanChineseText(item?.displayName, ""),
     });
     seen.add(chatId);
   }

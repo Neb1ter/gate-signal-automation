@@ -52,7 +52,7 @@ function buildProtectionText(signal, tradeIdea) {
     protectionPlan.riskRewardTarget ? `盈亏比：${protectionPlan.riskRewardTarget}` : "",
   ]
     .filter(Boolean)
-    .join(" ｜ ");
+    .join(" · ");
 }
 
 export function renderSignalReviewPage(signal, token, options = {}) {
@@ -61,7 +61,8 @@ export function renderSignalReviewPage(signal, token, options = {}) {
   const preview = options.preview || {};
   const tradeIdea = signal.tradeIdea || {};
   const title = signal.sourceType === "analyst" ? "分析师策略确认" : "新闻交易确认";
-  const orderType = tradeIdea.orderType || (String(tradeIdea.kind || "").includes("limit") ? "limit" : "market");
+  const orderType =
+    tradeIdea.orderType || (String(tradeIdea.kind || "").includes("limit") ? "limit" : "market");
   const leverage = String(tradeIdea.leverage || preview.leverage || "20").replace(/x$/i, "");
   const size = tradeIdea.size || preview.estimatedContracts || "";
   const price = tradeIdea.price || preview.referencePrice || "";
@@ -71,7 +72,7 @@ export function renderSignalReviewPage(signal, token, options = {}) {
   const keySuggestion =
     tradeIdea.summary ||
     signal.analysis?.normalizedSummary?.split("\n").find(Boolean) ||
-    "这条消息暂时只形成了结构化分析，你可以继续手动补充下单参数。";
+    "这条消息目前只有结构化分析，你可以继续手动补充下单参数。";
   const leverageHint =
     preview?.leverageSource === "current_position"
       ? `检测到 ${tradeIdea.symbol || preview.contract || "当前合约"} 已有仓位，默认沿用当前杠杆 ${leverage}x。`
@@ -123,7 +124,11 @@ export function renderSignalReviewPage(signal, token, options = {}) {
         box-shadow: 0 14px 32px rgba(18, 36, 73, 0.08);
       }
       .page-title { margin: 0 0 16px; font-size: 28px; line-height: 1.2; }
-      .meta, .summary-grid, .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+      .meta, .summary-grid, .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
       .meta-item, .field-card, .summary-card, .section, .callout {
         background: var(--soft);
         border: 1px solid #e3e9f3;
@@ -138,7 +143,13 @@ export function renderSignalReviewPage(signal, token, options = {}) {
         color: #fff;
       }
       .trade-hero.neutral { background: linear-gradient(135deg, #4a5d80 0%, #6c7f9f 100%); }
-      .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.9; }
+      .eyebrow {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.9;
+      }
       .trade-title { margin-top: 8px; font-size: 28px; line-height: 1.35; font-weight: 800; }
       .trade-subtitle { margin-top: 10px; font-size: 14px; line-height: 1.6; opacity: 0.96; }
       .section, .callout, .summary-grid, .form-grid { margin-top: 16px; }
@@ -219,7 +230,7 @@ export function renderSignalReviewPage(signal, token, options = {}) {
         </section>
         <section class="summary-grid">
           <div class="summary-card"><div class="summary-label">标的 / 合约</div><div class="summary-value">${escapeHtml(symbol || contract || "待补充")}</div></div>
-          <div class="summary-card"><div class="summary-label">方向 / 订单类型</div><div class="summary-value">${escapeHtml(`${sideLabel} ｜ ${orderTypeLabel}`)}</div></div>
+          <div class="summary-card"><div class="summary-label">方向 / 订单类型</div><div class="summary-value">${escapeHtml(`${sideLabel} · ${orderTypeLabel}`)}</div></div>
           <div class="summary-card"><div class="summary-label">默认仓位</div><div class="summary-value">${escapeHtml(positionSummary)}</div></div>
           <div class="summary-card"><div class="summary-label">保护计划</div><div class="summary-value">${escapeHtml(protectionText)}</div></div>
         </section>

@@ -514,7 +514,7 @@ export function renderAdminPage({
             String(route.chatId),
             {
               webhookUrl: String(route.webhookUrl || ""),
-              displayName: String(route.displayName || ""),
+              displayName: resolveRouteDisplayName(String(route.chatId), route.displayName),
             },
           ]),
         ),
@@ -578,6 +578,37 @@ export function renderAdminPage({
           .replaceAll("<", "&lt;")
           .replaceAll(">", "&gt;")
           .replaceAll('"', "&quot;");
+      }
+
+      function looksBrokenChineseText(value) {
+        const text = String(value ?? "").trim();
+        if (!text) return false;
+        if (/^\\?{2,}$/.test(text)) return true;
+        if (text.includes("�")) return true;
+        return [
+          "鍒嗘瀽",
+          "涓夐┈",
+          "娲竷",
+          "鏄撶泩",
+          "闆朵笅",
+          "鑸掔惔",
+          "鐔拱",
+          "btc涔斾箶",
+          "澶ф紓浜",
+        ].some((token) => text.includes(token));
+      }
+
+      function buildDefaultRouteDisplayName(chatId) {
+        const title = getChatTitle(chatId);
+        return title ? title + "策略专线" : "分析师专线" + String(chatId).slice(-4);
+      }
+
+      function resolveRouteDisplayName(chatId, value) {
+        const text = String(value ?? "").trim();
+        if (!text || looksBrokenChineseText(text)) {
+          return buildDefaultRouteDisplayName(chatId);
+        }
+        return text;
       }
 
       function formatMetricNumber(value, digits = 2) {
@@ -820,7 +851,7 @@ export function renderAdminPage({
               '<input type="text" data-route-id="' +
                 escapeClientHtml(chatId) +
                 '" data-route-field="displayName" value="' +
-                escapeClientHtml(route.displayName) +
+                escapeClientHtml(resolveRouteDisplayName(chatId, route.displayName)) +
                 '" placeholder="例如：三马哥策略专线" />',
               "<small>飞书收到消息时显示这个名称，用来和 Telegram 原群做区分。</small>",
               "</div>",
@@ -945,7 +976,10 @@ export function renderAdminPage({
           const routeField = target.dataset.routeField;
           if (routeId && routeField) {
             const current = state.analystRoutes.get(routeId) || { webhookUrl: "", displayName: "" };
-            current[routeField] = target.value;
+            current[routeField] =
+              routeField === "displayName"
+                ? resolveRouteDisplayName(routeId, target.value)
+                : target.value;
             state.analystRoutes.set(routeId, current);
           }
           const analystId = target.dataset.analystId;
@@ -997,7 +1031,7 @@ export function renderAdminPage({
                 const route = state.analystRoutes.get(chatId) || {};
                 return {
                   chatId,
-                  displayName: String(route.displayName || "").trim(),
+                  displayName: resolveRouteDisplayName(chatId, route.displayName),
                   webhookUrl: String(route.webhookUrl || "").trim(),
                 };
               })
@@ -1057,7 +1091,7 @@ export function renderAdminPage({
               String(route.chatId),
               {
                 webhookUrl: String(route.webhookUrl || ""),
-                displayName: String(route.displayName || ""),
+                displayName: resolveRouteDisplayName(String(route.chatId), route.displayName),
               },
             ]),
           );
