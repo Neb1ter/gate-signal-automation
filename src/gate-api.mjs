@@ -480,6 +480,7 @@ export class GateSpotClient {
     activationPrice,
     callbackRate = 0.003,
     isGte = true,
+    priceType = 1,
     clientOrderId,
   }) {
     const normalizedAmount = trimInteger(amount);
@@ -498,6 +499,7 @@ export class GateSpotClient {
       activation_price: normalizedActivationPrice,
       is_gte: Boolean(isGte),
       price_offset: callbackOffset,
+      price_type: [1, 2, 3].includes(Number(priceType)) ? Number(priceType) : 1,
       reduce_only: true,
       text: clientOrderId || `t-trail-${Date.now().toString().slice(-8)}`,
     });
