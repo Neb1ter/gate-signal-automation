@@ -29,6 +29,16 @@ function normalizeAnalystRoutes(value) {
   return normalized;
 }
 
+function normalizeFeishuSettings(value, defaults = {}) {
+  const source = value || {};
+  return {
+    analystRoutes: normalizeAnalystRoutes(source.analystRoutes ?? defaults.analystRoutes),
+    generalAnalystSignalWebhookUrl: String(
+      source.generalAnalystSignalWebhookUrl ?? defaults.generalAnalystSignalWebhookUrl ?? "",
+    ).trim(),
+  };
+}
+
 function normalizeSymbolList(value) {
   if (Array.isArray(value)) {
     return [...new Set(value.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean))];
@@ -141,13 +151,14 @@ export class JsonStore {
         newsChatIds: normalizeIdList(defaults.telegram?.newsChatIds),
       },
       feishu: {
-        analystRoutes: normalizeAnalystRoutes(defaults.feishu?.analystRoutes),
+        ...normalizeFeishuSettings(defaults.feishu, defaults.feishu),
       },
       analysts: {
         configs: normalizeAnalystConfigs(defaults.analysts?.configs),
       },
       execution: {
         newsMode: defaults.execution?.newsMode === "manual" ? "manual" : "auto",
+        analystMode: defaults.execution?.analystMode === "auto" ? "auto" : "manual",
       },
       ai: normalizeAiSettings(defaults.ai, defaults.ai),
       gate: normalizeGateSettings(defaults.gate, defaults.gate),
@@ -182,7 +193,7 @@ export class JsonStore {
         newsChatIds: normalizeIdList(savedTelegram.newsChatIds),
       },
       feishu: {
-        analystRoutes: normalizeAnalystRoutes(this.state.runtimeSettings?.feishu?.analystRoutes),
+        ...normalizeFeishuSettings(this.state.runtimeSettings?.feishu, fallback.feishu),
       },
       analysts: {
         configs: normalizeAnalystConfigs(this.state.runtimeSettings?.analysts?.configs),
@@ -190,6 +201,8 @@ export class JsonStore {
       execution: {
         newsMode:
           this.state.runtimeSettings?.execution?.newsMode === "manual" ? "manual" : "auto",
+        analystMode:
+          this.state.runtimeSettings?.execution?.analystMode === "auto" ? "auto" : "manual",
       },
       ai: normalizeAiSettings(this.state.runtimeSettings?.ai, fallback.ai),
       gate: normalizeGateSettings(this.state.runtimeSettings?.gate, fallback.gate),
@@ -215,15 +228,14 @@ export class JsonStore {
         newsChatIds: normalizeIdList(nextTelegram.newsChatIds ?? current.telegram.newsChatIds),
       },
       feishu: {
-        analystRoutes: normalizeAnalystRoutes(
-          nextFeishu.analystRoutes ?? current.feishu.analystRoutes,
-        ),
+        ...normalizeFeishuSettings(nextFeishu, current.feishu),
       },
       analysts: {
         configs: normalizeAnalystConfigs(nextAnalysts.configs ?? current.analysts.configs),
       },
       execution: {
         newsMode: nextSettings?.execution?.newsMode === "manual" ? "manual" : "auto",
+        analystMode: nextSettings?.execution?.analystMode === "auto" ? "auto" : "manual",
       },
       ai: normalizeAiSettings(nextAi, current.ai),
       gate: normalizeGateSettings(nextGate, current.gate),

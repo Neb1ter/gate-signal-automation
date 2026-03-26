@@ -14,7 +14,8 @@ import {
   createSignalFromPayload,
   createSignalFromTelegramMessage,
   evaluateSignal,
-  reconcileAnalystSignalWithAi,
+  isAnalystAiTradeCandidate,
+  reconcileAnalystSignalWithAiV2,
 } from "./signal-engine.mjs";
 import { JsonStore } from "./storage.mjs";
 import {
@@ -38,7 +39,20 @@ const telegramRuntime = {
   identity: "",
   lastError: "",
 };
-const APP_BUILD = "trail-price-type-v2";
+const APP_BUILD = "analyst-general-signal-routing-v1";
+
+const cleanConfiguredChatLabels = {
+  "-1003758464445": "Get8.Pro",
+  "-1003720685651": "Get8.Pro_News",
+  "-1003093807993": "舒琴",
+  "-1003358734784": "零下二度",
+  "-1002953601978": "易盈社区-所长",
+  "-1003435926001": "三马哥",
+  "-1003162264989": "洪七公",
+  "-1003300637347": "btc乔乔",
+  "-1003044946193": "大漂亮策略早知道",
+  "-1003547241758": "熬鹰资本",
+};
 
 const configuredChatLabels = {
   "-1003758464445": "Get8.Pro",
@@ -74,12 +88,14 @@ const defaultRuntimeSettings = {
   },
   feishu: {
     analystRoutes: [],
+    generalAnalystSignalWebhookUrl: "",
   },
   analysts: {
     configs: [],
   },
   execution: {
     newsMode: "auto",
+    analystMode: "manual",
   },
   ai: {
     enabled: config.ai.enabled,
@@ -137,7 +153,7 @@ function getEffectiveTelegramConfig() {
 }
 
 function getConfiguredChatLabel(chatId) {
-  return coerceCleanChineseText(normalizedChatLabels[String(chatId || "")], "");
+  return coerceCleanChineseText(cleanConfiguredChatLabels[String(chatId || "")], "");
 }
 
 function getAnalystRoute(chatId) {
@@ -205,6 +221,79 @@ function getSignalDeliveryOptionsSafe(signal) {
       buildAnalystPrivacyAlias(signal.chatId),
     routeLabel,
   };
+}
+
+function getAnalystExecutionMode(runtimeSettings = getRuntimeSettings()) {
+  return runtimeSettings.execution?.analystMode === "auto" ? "auto" : "manual";
+}
+
+function isAnalystSignalClearForBroadcast(signal) {
+  return (
+    signal?.sourceType === "analyst" &&
+    Boolean(signal.tradeIdea) &&
+    isAnalystAiTradeCandidate(signal) &&
+    signal.analysis?.automationReady === true
+  );
+}
+
+function getGeneralAnalystSignalDeliveryOptions(signal) {
+  if (!isAnalystSignalClearForBroadcast(signal)) {
+    return null;
+  }
+
+  const runtimeSettings = getRuntimeSettings();
+  const webhookUrl = String(
+    runtimeSettings.feishu?.generalAnalystSignalWebhookUrl || "",
+  ).trim();
+  if (!webhookUrl) {
+    return null;
+  }
+
+  const primary = getSignalDeliveryOptionsSafe(signal);
+  return {
+    ...primary,
+    webhookUrl,
+    routeLabel: "分析师交易信号",
+  };
+}
+
+function dedupeDeliveryTargets(targets) {
+  const seen = new Set();
+  const deduped = [];
+  for (const target of targets) {
+    if (!target) {
+      continue;
+    }
+    const resolved = feishuNotifier.resolveWebhookUrl(target.webhookUrl);
+    if (!resolved || seen.has(resolved)) {
+      continue;
+    }
+    seen.add(resolved);
+    deduped.push(target);
+  }
+  return deduped;
+}
+
+function getSignalDeliveryTargets(signal) {
+  const targets = [getSignalDeliveryOptionsSafe(signal)];
+  const generalTarget = getGeneralAnalystSignalDeliveryOptions(signal);
+  if (generalTarget) {
+    targets.push(generalTarget);
+  }
+  return dedupeDeliveryTargets(targets);
+}
+
+function getExecutionResultDeliveryTargets(signal, trigger) {
+  const primaryTarget = getSignalDeliveryOptionsSafe(signal);
+  const targets = [primaryTarget];
+  const analystMode = getAnalystExecutionMode();
+  if (signal?.sourceType === "analyst" && trigger === "auto" && analystMode === "auto") {
+    const generalTarget = getGeneralAnalystSignalDeliveryOptions(signal);
+    if (generalTarget) {
+      targets.push(generalTarget);
+    }
+  }
+  return dedupeDeliveryTargets(targets);
 }
 
 function getTelegramRuntimeSummary() {
@@ -802,8 +891,12 @@ function renderPendingQueuePage(pendingSignals) {
 
 async function notifySignal(signal) {
   const approvalToken = signApprovalToken(signal.id);
-  const deliveryOptions = getSignalDeliveryOptionsSafe(signal);
-  await feishuNotifier.sendSignalCard(signal, approvalToken, deliveryOptions);
+  const deliveryTargets = getSignalDeliveryTargets(signal);
+  await Promise.all(
+    deliveryTargets.map((deliveryOptions) =>
+      feishuNotifier.sendSignalCard(signal, approvalToken, deliveryOptions),
+    ),
+  );
 }
 
 async function safeNotifySignal(signal) {
@@ -814,12 +907,19 @@ async function safeNotifySignal(signal) {
   }
 }
 
-async function safeNotifyExecutionResult(signal, executionResult, deliveryOptions) {
-  try {
-    await feishuNotifier.sendExecutionResult(signal, executionResult, deliveryOptions);
-  } catch (error) {
-    console.warn(`[notify] execution ${signal.id} failed: ${error.message}`);
-  }
+async function safeNotifyExecutionResult(signal, executionResult, trigger) {
+  const deliveryTargets = getExecutionResultDeliveryTargets(signal, trigger);
+  await Promise.all(
+    deliveryTargets.map(async (deliveryOptions) => {
+      try {
+        await feishuNotifier.sendExecutionResult(signal, executionResult, deliveryOptions);
+      } catch (error) {
+        console.warn(
+          `[notify] execution ${signal.id} -> ${deliveryOptions.routeLabel || "default"} failed: ${error.message}`,
+        );
+      }
+    }),
+  );
 }
 
 const processingJobs = new Map();
@@ -904,7 +1004,7 @@ async function finalizeSignalProcessing(signalId) {
       applyAiAnalysis(signal, aiAnalysis);
       signal.aiCompletedAt = new Date().toISOString();
     }
-    reconcileAnalystSignalWithAi(signal, runtimeSettings, config, store);
+    reconcileAnalystSignalWithAiV2(signal, runtimeSettings, config, store);
     const lifecycleIntent = detectLifecycleIntent(signal);
     if (lifecycleIntent) {
       signal.managementIntent = lifecycleIntent;
@@ -946,7 +1046,6 @@ async function finalizeSignalProcessing(signalId) {
 async function executeSignal(signal, trigger, options = {}) {
   const runtimeSettings = getRuntimeSettings();
   const gateClient = createGateClient(runtimeSettings);
-  const deliveryOptions = getSignalDeliveryOptionsSafe(signal);
   const decisionAction = resolveDecisionAction(signal, options.form || {});
   const targetExecutionId = String(options.targetExecutionId || options.form?.targetExecutionId || "").trim();
   if (decisionAction === "cancel") {
@@ -1015,7 +1114,7 @@ async function executeSignal(signal, trigger, options = {}) {
     signal.executionStatus = executionBundle.status;
     signal.executionResult = executionResult;
     store.upsertSignal(signal);
-    await safeNotifyExecutionResult(signal, executionResult, deliveryOptions);
+    await safeNotifyExecutionResult(signal, executionResult, trigger);
     return executionResult;
   }
   if (!signal.tradeIdea) {
@@ -1113,7 +1212,7 @@ async function executeSignal(signal, trigger, options = {}) {
       signal.executionStatus = executionBundle.status;
       signal.executionResult = executionResult;
       store.upsertSignal(signal);
-      await safeNotifyExecutionResult(signal, executionResult, deliveryOptions);
+      await safeNotifyExecutionResult(signal, executionResult, trigger);
       return executionResult;
     }
 
@@ -1219,7 +1318,7 @@ async function executeSignal(signal, trigger, options = {}) {
         Number.parseFloat(signal.tradeIdea.amountBase || "") ||
         0,
     });
-    await safeNotifyExecutionResult(signal, executionResult, deliveryOptions);
+    await safeNotifyExecutionResult(signal, executionResult, trigger);
     return executionResult;
   } catch (error) {
     const executionResult = {
@@ -1237,7 +1336,7 @@ async function executeSignal(signal, trigger, options = {}) {
     executionBundle.error = error.message;
     store.upsertExecution(executionBundle);
     store.upsertSignal(signal);
-    await safeNotifyExecutionResult(signal, executionResult, deliveryOptions);
+    await safeNotifyExecutionResult(signal, executionResult, trigger);
     return executionResult;
   }
 }
@@ -1591,6 +1690,7 @@ const server = http.createServer(async (request, response) => {
         publicBaseUrl: config.publicBaseUrl,
         dryRun: !["testnet", "spot_testnet", "futures_testnet"].includes(runtimeGateMode),
         autoExecutionEnabled: config.autoExecutionEnabled,
+        runtimeAnalystMode: getAnalystExecutionMode(),
         runtimeAiEnabled: getRuntimeSettings().ai?.enabled || false,
         runtimeGateMode,
         telegramMode:
@@ -1612,7 +1712,7 @@ const server = http.createServer(async (request, response) => {
       const analystMetrics = await buildAnalystMetrics({
         runtimeSettings: getRuntimeSettings(),
         knownChats: store.listKnownTelegramChats(),
-        configuredChatLabels: normalizedChatLabels,
+        configuredChatLabels: cleanConfiguredChatLabels,
         trades: store.listTrades(),
         signals: store.listSignals(),
         gateClient: createGateClient(getRuntimeSettings()),
@@ -1623,7 +1723,7 @@ const server = http.createServer(async (request, response) => {
         renderAdminPage({
           runtimeSettings: getRuntimeSettings(),
           knownChats: store.listKnownTelegramChats(),
-          configuredChatLabels: normalizedChatLabels,
+          configuredChatLabels: cleanConfiguredChatLabels,
           signalCount: store.listSignals().length,
           dryRun: !["testnet", "spot_testnet", "futures_testnet"].includes(runtimeGateMode),
           autoExecutionEnabled: config.autoExecutionEnabled,
@@ -1692,7 +1792,7 @@ const server = http.createServer(async (request, response) => {
       const analystMetrics = await buildAnalystMetrics({
         runtimeSettings: getRuntimeSettings(),
         knownChats: store.listKnownTelegramChats(),
-        configuredChatLabels: normalizedChatLabels,
+        configuredChatLabels: cleanConfiguredChatLabels,
         trades: store.listTrades(),
         signals: store.listSignals(),
         gateClient: createGateClient(getRuntimeSettings()),

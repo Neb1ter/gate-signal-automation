@@ -322,8 +322,8 @@ export function renderAdminPage({
       <div class="hero">
         <div class="hero-copy">
           <h1>交易信号后台</h1>
-          <p>这里可以管理 Telegram 监听群、分析师分群转发、新闻自动 / 手动交易模式、AI 语义结构化能力，以及 Gate 模拟跟单配置。</p>
-          <div class="badge">分析师原文会先脱敏，再按结构化卡片发送到对应飞书群，确认后再决定是否跟单。</div>
+          <p>这里可以管理 Telegram 监听群、分析师分群转发、分析师 / 新闻的手动与自动交易模式、AI 语义结构化能力，以及 Gate 模拟跟单配置。</p>
+          <div class="badge">分析师原文会先脱敏，再按结构化卡片发送到对应飞书群；只有 AI 明确识别出可执行信号时，才会额外进入“分析师交易信号”总群。</div>
         </div>
         <div class="actions">
           <a href="/pending" class="button-link button-secondary">查看待决策</a>
@@ -374,8 +374,16 @@ export function renderAdminPage({
       <div class="panel-grid">
         <div class="stack">
           <div class="card">
-            <div class="section-title">新闻交易模式</div>
-            <p class="section-copy">分析师消息始终先发飞书，由你手动决策。这里控制的是新闻命中策略后，是自动交易还是先等你确认。</p>
+            <div class="section-title">执行模式</div>
+            <p class="section-copy">分析师和新闻可以分别设置为手动确认或自动执行。分析师专属群始终会收到转发，只有 AI 认为信号足够明确时，才会额外进入“分析师交易信号”总群。</p>
+            <div class="field">
+              <label for="analystMode">分析师交易模式</label>
+              <select id="analystMode">
+                <option value="manual" ${runtimeSettings.execution?.analystMode === "auto" ? "" : "selected"}>手动确认</option>
+                <option value="auto" ${runtimeSettings.execution?.analystMode === "auto" ? "selected" : ""}>AI 自动交易</option>
+              </select>
+              <small>手动确认：只转发到群聊，等待人工审批。AI 自动交易：只有 AI 明确判断可执行时，才会自动下单并把交易结果发到“分析师交易信号”总群。</small>
+            </div>
             <div class="field">
               <label for="newsMode">新闻交易模式</label>
               <select id="newsMode">
@@ -478,6 +486,11 @@ export function renderAdminPage({
             <div class="section-title">分析师分群转发</div>
             <p class="section-copy">你可以把不同的 Telegram 分析师群分别转发到不同的飞书群。每个飞书群都需要自己的 webhook。</p>
             <div class="badge">${defaultFeishuConfigured ? "已存在默认飞书群：未单独配置时会回落到默认群" : "当前没有默认飞书群：请至少给分析师群配置一个 webhook"}</div>
+            <div class="field">
+              <label for="generalAnalystSignalWebhookUrl">分析师交易信号总群 Webhook</label>
+              <input id="generalAnalystSignalWebhookUrl" type="url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..." value="${escapeHtml(runtimeSettings.feishu?.generalAnalystSignalWebhookUrl || "")}" />
+              <small>只有当 AI 明确识别出可直接交易的分析师信号时，系统才会额外把这条消息发到这个总群。手动模式下只转发不执行；自动模式下会执行并把结果也发过去。</small>
+            </div>
             <div id="analystRoutesWrap" class="route-grid"></div>
           </div>
 
@@ -518,6 +531,9 @@ export function renderAdminPage({
             },
           ]),
         ),
+        generalAnalystSignalWebhookUrl: String(
+          bootstrap.runtimeSettings.feishu?.generalAnalystSignalWebhookUrl || "",
+        ),
         analystConfigs: new Map(
           (bootstrap.runtimeSettings.analysts?.configs || []).map((item) => [
             String(item.chatId),
@@ -531,6 +547,8 @@ export function renderAdminPage({
           ]),
         ),
         newsMode: bootstrap.runtimeSettings.execution?.newsMode === "manual" ? "manual" : "auto",
+        analystMode:
+          bootstrap.runtimeSettings.execution?.analystMode === "auto" ? "auto" : "manual",
         ai: {
           enabled: Boolean(bootstrap.runtimeSettings.ai?.enabled),
           provider: String(bootstrap.runtimeSettings.ai?.provider || "dashscope"),
@@ -556,7 +574,9 @@ export function renderAdminPage({
       const allowedCsv = document.getElementById("allowedCsv");
       const newsCsv = document.getElementById("newsCsv");
       const analystCsv = document.getElementById("analystCsv");
+      const analystMode = document.getElementById("analystMode");
       const newsMode = document.getElementById("newsMode");
+      const generalAnalystSignalWebhookUrl = document.getElementById("generalAnalystSignalWebhookUrl");
       const aiEnabled = document.getElementById("aiEnabled");
       const aiBaseUrl = document.getElementById("aiBaseUrl");
       const aiPrimaryModel = document.getElementById("aiPrimaryModel");
@@ -693,7 +713,9 @@ export function renderAdminPage({
         allowedCsv.value = nonDiscoveredFromSet(state.allowed);
         newsCsv.value = nonDiscoveredFromSet(state.news);
         analystCsv.value = nonDiscoveredFromSet(state.analyst);
+        analystMode.value = state.analystMode;
         newsMode.value = state.newsMode;
+        generalAnalystSignalWebhookUrl.value = state.generalAnalystSignalWebhookUrl;
         aiEnabled.value = state.ai.enabled ? "true" : "false";
         aiBaseUrl.value = state.ai.baseUrl;
         aiPrimaryModel.value = state.ai.primaryModel;
@@ -996,8 +1018,16 @@ export function renderAdminPage({
         }
       });
 
+      analystMode.addEventListener("change", () => {
+        state.analystMode = analystMode.value === "auto" ? "auto" : "manual";
+      });
+
       newsMode.addEventListener("change", () => {
         state.newsMode = newsMode.value === "manual" ? "manual" : "auto";
+      });
+
+      generalAnalystSignalWebhookUrl.addEventListener("input", () => {
+        state.generalAnalystSignalWebhookUrl = generalAnalystSignalWebhookUrl.value.trim();
       });
 
       aiEnabled.addEventListener("change", () => {
@@ -1026,6 +1056,7 @@ export function renderAdminPage({
             analystChatIds: [...new Set([...state.analyst, ...parseCsv(analystCsv.value)])],
           },
           feishu: {
+            generalAnalystSignalWebhookUrl: state.generalAnalystSignalWebhookUrl,
             analystRoutes: [...state.analyst]
               .map((chatId) => {
                 const route = state.analystRoutes.get(chatId) || {};
@@ -1049,6 +1080,7 @@ export function renderAdminPage({
             }),
           },
           execution: {
+            analystMode: state.analystMode,
             newsMode: state.newsMode,
           },
           ai: {
@@ -1095,6 +1127,9 @@ export function renderAdminPage({
               },
             ]),
           );
+          state.generalAnalystSignalWebhookUrl = String(
+            saved.feishu?.generalAnalystSignalWebhookUrl || "",
+          );
           state.analystConfigs = new Map(
             (saved.analysts?.configs || []).map((item) => [
               String(item.chatId),
@@ -1107,6 +1142,7 @@ export function renderAdminPage({
               },
             ]),
           );
+          state.analystMode = saved.execution?.analystMode === "auto" ? "auto" : "manual";
           state.newsMode = saved.execution?.newsMode === "manual" ? "manual" : "auto";
           state.ai = {
             enabled: Boolean(saved.ai?.enabled),
