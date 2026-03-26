@@ -730,6 +730,31 @@ async function processTelegramMessage(message) {
   if (!baseSignal) {
     return null;
   }
+
+  if (baseSignal.sourceType === "analyst" && baseSignal.chatId) {
+    const recentContext = store.getRecentAnalystMessages(baseSignal.chatId, {
+      limit: 6,
+      windowMinutes: 180,
+    });
+
+    if (recentContext.length) {
+      baseSignal.contextMessages = recentContext;
+      baseSignal.contextText = [
+        ...recentContext.map(
+          (item, index) =>
+            `上一段 ${index + 1}（${String(item.publishedAt || "").replace("T", " ").replace("Z", " UTC")}）:\n${item.text}`,
+        ),
+        `最新消息:\n${baseSignal.text}`,
+      ].join("\n\n");
+    }
+
+    store.appendRecentAnalystMessage(baseSignal.chatId, {
+      messageId: message.message_id || message.id || "",
+      publishedAt: baseSignal.publishedAt,
+      text: baseSignal.text,
+    });
+  }
+
   return processBaseSignal(baseSignal);
 }
 

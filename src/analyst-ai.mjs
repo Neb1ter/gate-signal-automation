@@ -129,16 +129,17 @@ function normalizeResult(parsed = {}, meta = {}) {
 }
 
 function buildPrimaryMessages(signal) {
+  const recentContext = Array.isArray(signal.contextMessages) ? signal.contextMessages : [];
   return [
     {
       role: "system",
       content:
-        "You are a trading-signal semantic analysis assistant. First understand what the analyst actually means, then convert that meaning into strict JSON only. Do not add explanations. Do not invent missing facts. messageType must be one of strategy, analysis, watchlist, brief. direction must be buy, sell, or an empty string. orderType must be market, limit, or an empty string. semanticSummary should be a short Chinese summary of the real intent. executionIntent should be one of enter, scale_in, reduce, exit, wait, hedge, unclear.",
+        "You are a trading-signal semantic analysis assistant. First understand what the analyst actually means, then convert that meaning into strict JSON only. Do not add explanations. Do not invent missing facts. The latest message is always the highest priority, but you may use recent context when the analyst sends a strategy in multiple consecutive parts. messageType must be one of strategy, analysis, watchlist, brief. direction must be buy, sell, or an empty string. orderType must be market, limit, or an empty string. semanticSummary should be a short Chinese summary of the real intent. executionIntent should be one of enter, scale_in, reduce, exit, wait, hedge, unclear.",
     },
     {
       role: "user",
       content: JSON.stringify({
-        task: "Understand the analyst message semantically and extract structured trading fields from the text.",
+        task: "Understand the analyst message semantically and extract structured trading fields from the text. If the message is only one segment of a longer strategy, use the recent context as background, but keep the latest message as the final source of truth.",
         expectedFields: [
           "semanticSummary",
           "executionIntent",
@@ -164,17 +165,20 @@ function buildPrimaryMessages(signal) {
           "riskFlags",
         ],
         text: signal.text,
+        recentContext,
+        combinedContextText: signal.contextText || signal.text,
       }),
     },
   ];
 }
 
 function buildReviewMessages(signal, extracted) {
+  const recentContext = Array.isArray(signal.contextMessages) ? signal.contextMessages : [];
   return [
     {
       role: "system",
       content:
-        "You are a trading-risk review assistant. Re-check the extracted result against the original analyst text and return strict JSON only. Focus on whether the semantic meaning was understood correctly, whether the fields are reasonable, whether the signal is automation-ready, and whether there is ambiguity or risk. automationReady should be true only when the asset, direction, and execution intent are all sufficiently clear.",
+        "You are a trading-risk review assistant. Re-check the extracted result against the original analyst text and any recent context, then return strict JSON only. Focus on whether the semantic meaning was understood correctly, whether the fields are reasonable, whether the signal is automation-ready, and whether there is ambiguity or risk. automationReady should be true only when the asset, direction, and execution intent are all sufficiently clear.",
     },
     {
       role: "user",
@@ -207,6 +211,8 @@ function buildReviewMessages(signal, extracted) {
           "riskFlags",
         ],
         originalText: signal.text,
+        recentContext,
+        combinedContextText: signal.contextText || signal.text,
         extracted,
       }),
     },

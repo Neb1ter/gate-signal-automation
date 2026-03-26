@@ -110,6 +110,7 @@ export class JsonStore {
       trades: [],
       runtimeSettings: {},
       knownTelegramChats: [],
+      recentAnalystMessages: {},
     };
   }
 
@@ -263,6 +264,53 @@ export class JsonStore {
 
     this.save();
     return nextRecord;
+  }
+
+  getRecentAnalystMessages(chatId, { limit = 6, windowMinutes = 180 } = {}) {
+    const id = String(chatId || "").trim();
+    if (!id) {
+      return [];
+    }
+
+    const records = Array.isArray(this.state.recentAnalystMessages?.[id])
+      ? this.state.recentAnalystMessages[id]
+      : [];
+    const cutoff = Date.now() - windowMinutes * 60 * 1000;
+
+    return records
+      .filter((item) => {
+        const timestamp = Date.parse(item?.publishedAt || "");
+        return Number.isFinite(timestamp) && timestamp >= cutoff && String(item?.text || "").trim();
+      })
+      .sort((a, b) => String(a.publishedAt || "").localeCompare(String(b.publishedAt || "")))
+      .slice(-limit);
+  }
+
+  appendRecentAnalystMessage(chatId, message, { limit = 12 } = {}) {
+    const id = String(chatId || "").trim();
+    const text = String(message?.text || "").trim();
+    if (!id || !text) {
+      return [];
+    }
+
+    const publishedAt = String(message?.publishedAt || new Date().toISOString());
+    const entry = {
+      messageId: String(message?.messageId || ""),
+      publishedAt,
+      text,
+    };
+
+    const current = Array.isArray(this.state.recentAnalystMessages?.[id])
+      ? this.state.recentAnalystMessages[id]
+      : [];
+
+    const next = [...current, entry]
+      .sort((a, b) => String(a.publishedAt || "").localeCompare(String(b.publishedAt || "")))
+      .slice(-limit);
+
+    this.state.recentAnalystMessages[id] = next;
+    this.save();
+    return next;
   }
 
   listSignals() {

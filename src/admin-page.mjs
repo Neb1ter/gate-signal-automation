@@ -53,7 +53,7 @@ export function renderAdminPage({
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>浜ゆ槗淇″彿鍚庡彴</title>
+    <title>交易信号后台</title>
     <style>
       :root {
         --bg: #f6f8fc;
@@ -321,25 +321,24 @@ export function renderAdminPage({
     <div class="shell">
       <div class="hero">
         <div class="hero-copy">
-          <h1>浜ゆ槗淇″彿鍚庡彴</h1>
-          <p>杩欓噷鍙互绠＄悊 Telegram 鐩戝惉缇ゃ€佸垎鏋愬笀鍒嗙兢杞彂銆佹柊闂昏嚜鍔?/ 鎵嬪姩浜ゆ槗妯″紡銆丄I 缁撴瀯鍖栬兘鍔涳紝浠ュ強 Gate 妯℃嫙璺熷崟閰嶇疆銆?/p>
-          <div class="badge">鍒嗘瀽甯堝師鏂囦細鍏堣劚鏁忥紝鍐嶆寜缁撴瀯鍖栧崱鐗囧彂閫佸埌瀵瑰簲椋炰功缇わ紝纭鍚庡啀鍐冲畾鏄惁璺熷崟銆?/div>
+          <h1>交易信号后台</h1>
+          <p>这里可以管理 Telegram 监听群、分析师分群转发、新闻自动 / 手动交易模式、AI 语义结构化能力，以及 Gate 模拟跟单配置。</p>
+          <div class="badge">分析师原文会先脱敏，再按结构化卡片发送到对应飞书群，确认后再决定是否跟单。</div>
         </div>
         <div class="actions">
-          <a href="/pending" class="button-link button-secondary">鏌ョ湅寰呭喅绛?/a>
-          <a href="/logout" class="button-link button-secondary">閫€鍑虹櫥褰?/a>
-          <button id="reload" class="button-secondary" type="button">鍒锋柊</button>
-          <button id="save" class="button-primary" type="button">淇濆瓨璁剧疆</button>
+          <a href="/pending" class="button-link button-secondary">查看待决策</a>
+          <a href="/logout" class="button-link button-secondary">退出登录</a>
+          <button id="reload" class="button-secondary" type="button">刷新</button>
+          <button id="save" class="button-primary" type="button">保存设置</button>
         </div>
       </div>
 
       <div class="grid">
         <div class="card">
-          <div class="metric-label">宸插瓨淇″彿</div>
+          <div class="metric-label">已存信号</div>
           <div class="metric-value">${escapeHtml(signalCount)}</div>
-          <div class="metric-hint">褰撳墠鏁版嵁搴撲腑宸蹭繚瀛樼殑淇″彿鏁伴噺</div>
+          <div class="metric-hint">当前数据库中已保存的信号数量</div>
         </div>
-        <div class="card">
         <div class="card">
           <div class="metric-label">下单模式</div>
           <div class="metric-value">${dryRun ? "模拟" : "真实"}</div>
@@ -366,44 +365,44 @@ export function renderAdminPage({
           <div class="metric-hint">当前运行态：${escapeHtml(runtimeAiEnabled ? "已启用" : "未启用")}</div>
         </div>
         <div class="card">
-          <div class="metric-label">Gate 璺熷崟閫氶亾</div>
-          <div class="metric-value">${escapeHtml(["testnet", "futures_testnet", "spot_testnet"].includes(runtimeSettings.gate?.mode) ? "Gate 妯℃嫙" : "鏈湴 Dry Run")}</div>
-          <div class="metric-hint">褰撳墠杩愯鎬侊細${escapeHtml(runtimeGateMode === "futures_testnet" || runtimeGateMode === "testnet" ? "Gate 妯℃嫙鍚堢害" : runtimeGateMode === "spot_testnet" ? "Gate 妯℃嫙鐜拌揣" : "鏈湴 Dry Run")}</div>
+          <div class="metric-label">Gate 跟单通道</div>
+          <div class="metric-value">${escapeHtml(["testnet", "futures_testnet", "spot_testnet"].includes(runtimeSettings.gate?.mode) ? "Gate 模拟" : "本地 Dry Run")}</div>
+          <div class="metric-hint">当前运行态：${escapeHtml(runtimeGateMode === "futures_testnet" || runtimeGateMode === "testnet" ? "Gate 模拟合约" : runtimeGateMode === "spot_testnet" ? "Gate 模拟现货" : "本地 Dry Run")}</div>
         </div>
       </div>
 
       <div class="panel-grid">
         <div class="stack">
           <div class="card">
-            <div class="section-title">鏂伴椈浜ゆ槗妯″紡</div>
-            <p class="section-copy">鍒嗘瀽甯堟秷鎭缁堝厛鍙戦涔︼紝鐢变綘鎵嬪姩鍐崇瓥銆傝繖閲屾帶鍒剁殑鏄柊闂诲懡涓瓥鐣ュ悗锛屾槸鑷姩浜ゆ槗杩樻槸鍏堢瓑浣犵‘璁ゃ€?/p>
+            <div class="section-title">新闻交易模式</div>
+            <p class="section-copy">分析师消息始终先发飞书，由你手动决策。这里控制的是新闻命中策略后，是自动交易还是先等你确认。</p>
             <div class="field">
-              <label for="newsMode">鏂伴椈浜ゆ槗妯″紡</label>
+              <label for="newsMode">新闻交易模式</label>
               <select id="newsMode">
-                <option value="auto" ${runtimeSettings.execution?.newsMode === "manual" ? "" : "selected"}>鑷姩浜ゆ槗</option>
-                <option value="manual" ${runtimeSettings.execution?.newsMode === "manual" ? "selected" : ""}>鎵嬪姩纭</option>
+                <option value="auto" ${runtimeSettings.execution?.newsMode === "manual" ? "" : "selected"}>自动交易</option>
+                <option value="manual" ${runtimeSettings.execution?.newsMode === "manual" ? "selected" : ""}>手动确认</option>
               </select>
-              <small>鑷姩浜ゆ槗锛氬懡涓柊闂荤瓥鐣ュ悗鐩存帴鎵ц銆傛墜鍔ㄧ‘璁わ細鍏堝彂椋炰功锛屽啀鐢变綘鍐冲畾鏄惁璺熷崟銆?/small>
+              <small>自动交易：命中新闻策略后直接执行。手动确认：先发飞书，再由你决定是否跟单。</small>
             </div>
           </div>
 
           <div class="card">
-            <div class="section-title">Telegram 缇ょ洃鍚厤缃?/div>
-            <p class="section-copy">濡傛灉鏌愪釜缇よ繕娌¤鑷姩璇嗗埆锛屽彲浠ョ洿鎺ュ湪杩欓噷濉叆 chat id銆傚涓?ID 鐢ㄨ嫳鏂囬€楀彿鍒嗛殧銆?/p>
+            <div class="section-title">Telegram 群监听配置</div>
+            <p class="section-copy">如果某个群还没被自动识别，可以直接在这里填入 chat id。多个 ID 用英文逗号分隔。</p>
 
             <div class="field">
-              <label for="allowedCsv">鍏佽鐩戝惉鐨勭兢 ID</label>
+              <label for="allowedCsv">允许监听的群 ID</label>
               <textarea id="allowedCsv"></textarea>
-              <small>鍙湁杩欓噷鐨勭兢鎵嶄細琚鐞嗐€傜暀绌烘椂绛変簬鍏佽鎵€鏈夊凡鍒嗙被缇ゃ€?/small>
+              <small>只有这里的群才会被处理。留空时等于允许所有已分类群。</small>
             </div>
 
             <div class="field">
-              <label for="newsCsv">鏂伴椈缇?ID</label>
+              <label for="newsCsv">新闻群 ID</label>
               <textarea id="newsCsv"></textarea>
             </div>
 
             <div class="field">
-              <label for="analystCsv">鍒嗘瀽甯堢兢 ID</label>
+              <label for="analystCsv">分析师群 ID</label>
               <textarea id="analystCsv"></textarea>
             </div>
           </div>
@@ -450,53 +449,53 @@ export function renderAdminPage({
             </div>
           </div>
           <div class="card">
-            <div class="section-title">Gate 妯℃嫙璺熷崟閰嶇疆</div>
-            <p class="section-copy">褰撳墠寤鸿鍏堟帴 Gate 妯℃嫙浜ゆ槗銆備繚瀛樺悗锛屽垎鏋愬笀纭璺熷崟浼氫紭鍏堣蛋杩欓噷鐨勬ā鎷?API锛涘鏋滀笉寮€锛屽垯浠嶇劧浣跨敤鏈湴 Dry Run銆?/p>
+            <div class="section-title">Gate 模拟跟单配置</div>
+            <p class="section-copy">当前建议先接 Gate 模拟交易。保存后，分析师确认跟单会优先走这里的模拟 API；如果不开，则仍然使用本地 Dry Run。</p>
             <div class="field">
-              <label for="gateMode">Gate 璺熷崟妯″紡</label>
+              <label for="gateMode">Gate 跟单模式</label>
               <select id="gateMode">
-                <option value="dry_run" ${["futures_testnet","spot_testnet","testnet"].includes(runtimeSettings.gate?.mode) ? "" : "selected"}>鏈湴 Dry Run</option>
-                <option value="futures_testnet" ${runtimeSettings.gate?.mode === "futures_testnet" || runtimeSettings.gate?.mode === "testnet" ? "selected" : ""}>Gate 妯℃嫙鍚堢害</option>
-                <option value="spot_testnet" ${runtimeSettings.gate?.mode === "spot_testnet" ? "selected" : ""}>Gate 妯℃嫙鐜拌揣</option>
+                <option value="dry_run" ${["futures_testnet","spot_testnet","testnet"].includes(runtimeSettings.gate?.mode) ? "" : "selected"}>本地 Dry Run</option>
+                <option value="futures_testnet" ${runtimeSettings.gate?.mode === "futures_testnet" || runtimeSettings.gate?.mode === "testnet" ? "selected" : ""}>Gate 模拟合约</option>
+                <option value="spot_testnet" ${runtimeSettings.gate?.mode === "spot_testnet" ? "selected" : ""}>Gate 模拟现货</option>
               </select>
             </div>
             <div class="field">
               <label for="gateBaseUrl">Gate API Base URL</label>
               <input id="gateBaseUrl" type="url" placeholder="https://api-testnet.gateapi.io" value="${escapeHtml(runtimeSettings.gate?.baseUrl || "")}" />
-              <small>寤鸿妯℃嫙浜ゆ槗濉啓瀹樻柟 Testnet 鍦板潃銆?/small>
+              <small>建议模拟交易填写官方 Testnet 地址。</small>
             </div>
             <div class="field">
               <label for="gateApiKey">Gate API Key</label>
-              <input id="gateApiKey" type="password" placeholder="妯℃嫙浜ゆ槗 API Key" value="${escapeHtml(runtimeSettings.gate?.apiKey || "")}" />
+              <input id="gateApiKey" type="password" placeholder="模拟交易 API Key" value="${escapeHtml(runtimeSettings.gate?.apiKey || "")}" />
             </div>
             <div class="field">
               <label for="gateApiSecret">Gate API Secret</label>
-              <input id="gateApiSecret" type="password" placeholder="妯℃嫙浜ゆ槗 API Secret" value="${escapeHtml(runtimeSettings.gate?.apiSecret || "")}" />
+              <input id="gateApiSecret" type="password" placeholder="模拟交易 API Secret" value="${escapeHtml(runtimeSettings.gate?.apiSecret || "")}" />
             </div>
           </div>
 
           <div class="card">
-            <div class="section-title">鍒嗘瀽甯堝垎缇よ浆鍙?/div>
-            <p class="section-copy">浣犲彲浠ユ妸涓嶅悓鐨?Telegram 鍒嗘瀽甯堢兢鍒嗗埆杞彂鍒颁笉鍚岀殑椋炰功缇ゃ€傛瘡涓涔︾兢閮介渶瑕佽嚜宸辩殑 webhook銆?/p>
-            <div class="badge">${defaultFeishuConfigured ? "宸插瓨鍦ㄩ粯璁ら涔︾兢锛氭湭鍗曠嫭閰嶇疆鏃朵細鍥炶惤鍒伴粯璁ょ兢" : "褰撳墠娌℃湁榛樿椋炰功缇わ細璇疯嚦灏戠粰鍒嗘瀽甯堢兢閰嶇疆涓€涓?webhook"}</div>
+            <div class="section-title">分析师分群转发</div>
+            <p class="section-copy">你可以把不同的 Telegram 分析师群分别转发到不同的飞书群。每个飞书群都需要自己的 webhook。</p>
+            <div class="badge">${defaultFeishuConfigured ? "已存在默认飞书群：未单独配置时会回落到默认群" : "当前没有默认飞书群：请至少给分析师群配置一个 webhook"}</div>
             <div id="analystRoutesWrap" class="route-grid"></div>
           </div>
 
           <div class="card">
-            <div class="section-title">浣跨敤璇存槑</div>
+            <div class="section-title">使用说明</div>
             <div class="hint-list">
-              <div>1. 鍙充晶鈥滃凡鍙戠幇鐨?Telegram 缇よ亰鈥濋噷鍕鹃€夊摢浜涚兢灞炰簬鈥滄柊闂荤兢鈥濇垨鈥滃垎鏋愬笀缇も€濄€?/div>
-              <div>2. 鍒嗘瀽甯堟秷鎭細灏介噺鎸夌粨鏋勫寲鏍煎紡杞彂锛涙棤娉曚笅鍗曠殑绾垎鏋愶紝涔熶細浣滀负缁撴瀯鍖栬鐐瑰崱鐗囧彂閫併€?/div>
-              <div>3. 椋炰功娑堟伅閲屽彧灞曠ず鑴辨晱鍚庣殑姝ｆ枃锛屼笉鍐嶉澶栨樉绀衡€滈殣绉佸鐞嗏€濇彁绀鸿銆?/div>
-              <div>4. Gate 妯℃嫙浜ゆ槗闇€瑕佷綘鑷繁鐨勬ā鎷?API Key / Secret锛涙湭閰嶇疆鏃朵粛浼氳蛋鏈湴 Dry Run銆?/div>
+              <div>1. 右侧“已发现的 Telegram 群聊”里勾选哪些群属于“新闻群”或“分析师群”。</div>
+              <div>2. 分析师消息会尽量按结构化格式转发；无法下单的纯分析，也会作为结构化观点卡片发送。</div>
+              <div>3. 飞书消息里只展示脱敏后的正文，不再额外显示“隐私处理”提示语。</div>
+              <div>4. Gate 模拟交易需要你自己的模拟 API Key / Secret；未配置时仍会走本地 Dry Run。</div>
             </div>
             <div class="status-line" id="statusLine"></div>
           </div>
         </div>
 
         <div class="card">
-          <div class="section-title">宸插彂鐜扮殑 Telegram 缇よ亰</div>
-          <p class="section-copy">杩欓噷浼氭妸绯荤粺瑙佽繃鐨勭兢锛屼互鍙婁綘鎵嬪伐閰嶇疆浣嗚繕娌℃敹鍒拌繃棣栨潯娑堟伅鐨勭兢涓€璧峰睍绀哄嚭鏉ャ€備綘涓嶇敤鍐嶈嚜宸辫 chat id锛屽彧瑕佺湅缇ゅ悕鍗冲彲銆?/p>
+          <div class="section-title">已发现的 Telegram 群聊</div>
+          <p class="section-copy">这里会把系统见过的群，以及你手工配置但还没收到过首条消息的群一起展示出来。你不用再自己记 chat id，只要看群名即可。</p>
           <div id="chatTableWrap"></div>
         </div>
       </div>
@@ -620,11 +619,11 @@ export function renderAdminPage({
       function getConfiguredOnlyChat(id) {
         return {
           id,
-          title: bootstrap.configuredChatLabels?.[id] || "鎵嬪姩閰嶇疆鐨勭兢鑱?,
+          title: bootstrap.configuredChatLabels?.[id] || "手动配置的群聊",
           username: "",
           type: "configured",
           lastSeenAt: "",
-          lastText: "绯荤粺杩樻病鍦ㄨ繖涓兢閲屾敹鍒伴鏉℃柊娑堟伅",
+          lastText: "系统还没在这个群里收到首条新消息",
           isConfiguredOnly: true,
         };
       }
@@ -684,7 +683,7 @@ export function renderAdminPage({
       function renderChats() {
         const chats = getVisibleChats();
         if (!chats.length) {
-          chatTableWrap.innerHTML = '<p class="empty">鐩墠杩樻病鏈夎嚜鍔ㄨ瘑鍒埌浠讳綍 Telegram 缇わ紝涔熸病鏈夋墜鍔ㄩ厤缃殑缇?ID銆備綘鍙互鍏堝湪宸︿晶濉叆缇?ID锛屾垨鑰呭厛璁╃郴缁熸敹鍒颁竴鏉℃柊娑堟伅銆?/p>';
+          chatTableWrap.innerHTML = '<p class="empty">目前还没有自动识别到任何 Telegram 群，也没有手动配置的群 ID。你可以先在左侧填入群 ID，或者先让系统收到一条新消息。</p>';
           return;
         }
 
@@ -695,7 +694,7 @@ export function renderAdminPage({
             const metaParts = [id];
             if (chat.username) metaParts.push("@" + chat.username);
             if (chat.type) metaParts.push(chat.type);
-            if (chat.isConfiguredOnly) metaParts.push("绛夊緟棣栨潯娑堟伅");
+            if (chat.isConfiguredOnly) metaParts.push("等待首条消息");
             const helpText = escapeClientHtml(chat.lastText || "");
             return \`
               <tr>
@@ -704,7 +703,7 @@ export function renderAdminPage({
                   <div class="chat-meta">\${escapeClientHtml(metaParts.join(" | "))}</div>
                   <div class="inline-help">\${helpText}</div>
                 </td>
-                <td>\${escapeClientHtml(chat.lastSeenAt || "灏氭湭鏀跺埌")}</td>
+                <td>\${escapeClientHtml(chat.lastSeenAt || "尚未收到")}</td>
                 <td><input type="checkbox" data-bucket="allowed" data-id="\${id}" \${checked(state.allowed, id)} /></td>
                 <td><input type="checkbox" data-bucket="news" data-id="\${id}" \${checked(state.news, id)} /></td>
                 <td><input type="checkbox" data-bucket="analyst" data-id="\${id}" \${checked(state.analyst, id)} /></td>
@@ -717,11 +716,11 @@ export function renderAdminPage({
           <table>
             <thead>
               <tr>
-                <th>缇よ亰</th>
-                <th>鏈€杩戞敹鍒?/th>
-                <th>鍏佽鐩戝惉</th>
-                <th>鏂伴椈缇?/th>
-                <th>鍒嗘瀽甯堢兢</th>
+                <th>群聊</th>
+                <th>最近收到</th>
+                <th>允许监听</th>
+                <th>新闻群</th>
+                <th>分析师群</th>
               </tr>
             </thead>
             <tbody>\${rows}</tbody>
@@ -735,13 +734,13 @@ export function renderAdminPage({
         );
         if (!analystIds.length) {
           analystRoutesWrap.innerHTML =
-            '<div class="empty">杩樻病鏈夎缃换浣曞垎鏋愬笀缇ゃ€傚厛鎶?Telegram 缇ゅ嬀閫変负鈥滃垎鏋愬笀缇も€濓紝杩欓噷灏变細鍑虹幇瀵瑰簲閰嶇疆銆?/div>';
+            '<div class="empty">还没有设置任何分析师群。先把 Telegram 群勾选为“分析师群”，这里就会出现对应配置。</div>';
           return;
         }
 
         const renderPositions = (metric) => {
           if (!metric?.positions?.length) {
-            return '<div class="inline-help">褰撳墠娌℃湁鏈钩浠撶殑妯℃嫙鎸佷粨銆?/div>';
+            return '<div class="inline-help">当前没有未平仓的模拟持仓。</div>';
           }
           return [
             '<div class="mini-list">',
@@ -750,11 +749,11 @@ export function renderAdminPage({
                 '<div class="mini-item">',
                 '<div class="mini-item-title">' + escapeClientHtml(position.symbol) + "</div>",
                 '<div class="mini-item-meta">' +
-                  "鏁伴噺 " +
+                  "数量 " +
                   escapeClientHtml(formatMetricNumber(position.qty, 6)) +
-                  " 路 鍧囦环 " +
+                  " · 均价 " +
                   escapeClientHtml(formatMetricNumber(position.avgCost, 2)) +
-                  " 路 娴泩浜?" +
+                  " · 浮盈亏 " +
                   escapeClientHtml(formatMetricNumber(position.unrealizedPnl, 2)) +
                   "</div>",
                 "</div>",
@@ -766,7 +765,7 @@ export function renderAdminPage({
 
         const renderRecentTrades = (metric) => {
           if (!metric?.recentTrades?.length) {
-            return '<div class="inline-help">褰撳墠杩樻病鏈夊彲缁熻鐨勬垚浜よ褰曘€?/div>';
+            return '<div class="inline-help">当前还没有可统计的成交记录。</div>';
           }
           return [
             '<div class="mini-list">',
@@ -774,17 +773,17 @@ export function renderAdminPage({
               const realizedText =
                 trade.realizedPnl === null
                   ? ""
-                  : " 路 宸插疄鐜扮泩浜?" + escapeClientHtml(formatMetricNumber(trade.realizedPnl, 2));
+                  : " · 已实现盈亏 " + escapeClientHtml(formatMetricNumber(trade.realizedPnl, 2));
               return [
                 '<div class="mini-item">',
                 '<div class="mini-item-title">' +
                   escapeClientHtml(trade.symbol) +
-                  " 路 " +
+                  " · " +
                   escapeClientHtml(String(trade.side || "").toUpperCase()) +
                   "</div>",
                 '<div class="mini-item-meta">' +
                   escapeClientHtml(String(trade.createdAt || "").replace("T", " ").replace("Z", " UTC")) +
-                  " 路 鍧囦环 " +
+                  " · 均价 " +
                   escapeClientHtml(formatMetricNumber(trade.avgPrice, 2)) +
                   realizedText +
                   "</div>",
@@ -814,89 +813,89 @@ export function renderAdminPage({
             return [
               '<section class="route-card">',
               "<h3>" + escapeClientHtml(getChatTitle(chatId)) + "</h3>",
-              "<p>Telegram 缇?ID锛? + escapeClientHtml(chatId) + "</p>",
+              "<p>Telegram 群 ID：" + escapeClientHtml(chatId) + "</p>",
               '<div class="route-fields">',
               "<div>",
-              "<label>椋炰功鏄剧ず鍚嶇О</label>",
+              "<label>飞书显示名称</label>",
               '<input type="text" data-route-id="' +
                 escapeClientHtml(chatId) +
                 '" data-route-field="displayName" value="' +
                 escapeClientHtml(route.displayName) +
-                '" placeholder="渚嬪锛氫笁椹摜绛栫暐涓撶嚎" />',
-              "<small>椋炰功鏀跺埌娑堟伅鏃舵樉绀鸿繖涓悕绉帮紝鐢ㄦ潵鍜?Telegram 鍘熺兢鍋氬尯鍒嗐€?/small>",
+                '" placeholder="例如：三马哥策略专线" />',
+              "<small>飞书收到消息时显示这个名称，用来和 Telegram 原群做区分。</small>",
               "</div>",
               "<div>",
-              "<label>涓撳睘椋炰功 Webhook</label>",
+              "<label>专属飞书 Webhook</label>",
               '<input type="url" data-route-id="' +
                 escapeClientHtml(chatId) +
                 '" data-route-field="webhookUrl" value="' +
                 escapeClientHtml(route.webhookUrl) +
                 '" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..." />',
-              "<small>濉簡灏卞彂鍒拌繖涓垎鏋愬笀鑷繁鐨勯涔︾兢锛涚暀绌哄垯鍥炶惤鍒伴粯璁ら涔︾兢銆?/small>",
+              "<small>填了就发到这个分析师自己的飞书群；留空则回落到默认飞书群。</small>",
               "</div>",
               '<div class="route-config-grid">',
               "<div>",
-              "<label>璺熷崟寮€鍏?/label>",
+              "<label>跟单开关</label>",
               '<select data-analyst-id="' +
                 escapeClientHtml(chatId) +
                 '" data-analyst-field="enabled">',
-              '<option value="true"' + (analystConfig.enabled !== false ? " selected" : "") + ">寮€鍚?/option>",
-              '<option value="false"' + (analystConfig.enabled === false ? " selected" : "") + ">鍏抽棴</option>",
+              '<option value="true"' + (analystConfig.enabled !== false ? " selected" : "") + ">开启</option>",
+              '<option value="false"' + (analystConfig.enabled === false ? " selected" : "") + ">关闭</option>",
               "</select>",
-              "<small>鍏抽棴鍚庝粛浼氳浆鍙戠瓥鐣ワ紝浣嗕笉浼氱敓鎴愬彲鎵ц璺熷崟寤鸿銆?/small>",
+              "<small>关闭后仍会转发策略，但不会生成可执行跟单建议。</small>",
               "</div>",
               "<div>",
-              "<label>榛樿璺熷崟閲戦 (USDT)</label>",
+              "<label>默认跟单金额 (USDT)</label>",
               '<input type="text" data-analyst-id="' +
                 escapeClientHtml(chatId) +
                 '" data-analyst-field="amountQuote" value="' +
                 escapeClientHtml(analystConfig.amountQuote || "100") +
-                '" placeholder="渚嬪 100" />',
-              "<small>杩欎釜鍒嗘瀽甯堢殑涔板叆淇″彿榛樿浣跨敤杩欎釜閲戦涓嬫ā鎷熷崟銆?/small>",
+                '" placeholder="例如 100" />',
+              "<small>这个分析师的买入信号默认使用这个金额下模拟单。</small>",
               "</div>",
               "<div>",
-              "<label>鐧藉悕鍗曞竵绉?/label>",
+              "<label>白名单币种</label>",
               '<input type="text" data-analyst-id="' +
                 escapeClientHtml(chatId) +
                 '" data-analyst-field="allowedSymbols" value="' +
                 escapeClientHtml(analystConfig.allowedSymbols || "") +
-                '" placeholder="渚嬪 BTC, ETH, SOL" />',
-              "<small>鍙厑璁歌繖浜涘竵绉嶇敓鎴愯窡鍗曞缓璁紱鐣欑┖琛ㄧず涓嶉檺鍒躲€?/small>",
+                '" placeholder="例如 BTC, ETH, SOL" />',
+              "<small>只允许这些币种生成跟单建议；留空表示不限制。</small>",
               "</div>",
               "</div>",
               "</div>",
               '<div class="route-metrics">',
-              '<div class="chat-title">绛栫暐鎵ц缁熻</div>',
+              '<div class="chat-title">策略执行统计</div>',
               '<div class="route-metrics-grid">',
-              '<div class="route-metric"><div class="inline-help">浜ゆ槗娆℃暟</div><strong>' +
+              '<div class="route-metric"><div class="inline-help">交易次数</div><strong>' +
                 escapeClientHtml(formatMetricNumber(metric?.tradeCount || 0, 0)) +
                 "</strong></div>",
-              '<div class="route-metric"><div class="inline-help">鑳滅巼</div><strong>' +
+              '<div class="route-metric"><div class="inline-help">胜率</div><strong>' +
                 escapeClientHtml(winRateText) +
                 "</strong></div>",
-              '<div class="route-metric"><div class="inline-help">鐩堜簭姣?/div><strong>' +
+              '<div class="route-metric"><div class="inline-help">盈亏比</div><strong>' +
                 escapeClientHtml(plRatioText) +
                 "</strong></div>",
-              '<div class="route-metric"><div class="inline-help">鎬荤泩浜?(USDT)</div><strong>' +
+              '<div class="route-metric"><div class="inline-help">总盈亏 (USDT)</div><strong>' +
                 escapeClientHtml(formatMetricNumber(metric?.totalPnl || 0, 2)) +
                 "</strong></div>",
               "</div>",
               '<div class="route-metrics-grid">',
-              '<div class="route-metric"><div class="inline-help">宸插疄鐜扮泩浜?/div><strong>' +
+              '<div class="route-metric"><div class="inline-help">已实现盈亏</div><strong>' +
                 escapeClientHtml(formatMetricNumber(metric?.realizedPnl || 0, 2)) +
                 "</strong></div>",
-              '<div class="route-metric"><div class="inline-help">鏈疄鐜扮泩浜?/div><strong>' +
+              '<div class="route-metric"><div class="inline-help">未实现盈亏</div><strong>' +
                 escapeClientHtml(formatMetricNumber(metric?.unrealizedPnl || 0, 2)) +
                 "</strong></div>",
-              '<div class="route-metric"><div class="inline-help">宸插钩浠撶瑪鏁?/div><strong>' +
+              '<div class="route-metric"><div class="inline-help">已平仓笔数</div><strong>' +
                 escapeClientHtml(formatMetricNumber(metric?.closeCount || 0, 0)) +
                 "</strong></div>",
-              '<div class="route-metric"><div class="inline-help">鎴愪氦棰?(USDT)</div><strong>' +
+              '<div class="route-metric"><div class="inline-help">成交额 (USDT)</div><strong>' +
                 escapeClientHtml(formatMetricNumber(metric?.quoteVolume || 0, 2)) +
                 "</strong></div>",
               "</div>",
-              '<div class="field"><label>褰撳墠鎸佷粨</label>' + renderPositions(metric) + "</div>",
-              '<div class="field"><label>鏈€杩戞垚浜?/label>' + renderRecentTrades(metric) + "</div>",
+              '<div class="field"><label>当前持仓</label>' + renderPositions(metric) + "</div>",
+              '<div class="field"><label>最近成交</label>' + renderRecentTrades(metric) + "</div>",
               "</div>",
               "</section>",
             ].join("");
@@ -1036,7 +1035,7 @@ export function renderAdminPage({
           },
         };
 
-        refreshStatus("淇濆瓨涓?..", false);
+        refreshStatus("保存中...", false);
 
         try {
           const response = await fetch("/api/runtime-settings", {
@@ -1095,9 +1094,9 @@ export function renderAdminPage({
           syncManualFields();
           renderChats();
           renderAnalystRoutes();
-          refreshStatus("璁剧疆宸蹭繚瀛樸€傛柊鐨?Telegram 娑堟伅浼氭寜鏈€鏂伴厤缃户缁祦杞€?, false);
+          refreshStatus("设置已保存。新的 Telegram 消息会按最新配置继续流转。", false);
         } catch (error) {
-          refreshStatus("淇濆瓨澶辫触锛? + (error?.message || error), true);
+          refreshStatus("保存失败：" + (error?.message || error), true);
         }
       });
 
