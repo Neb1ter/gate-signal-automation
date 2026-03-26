@@ -473,6 +473,55 @@ export class GateSpotClient {
     return this.request("POST", `/futures/${encodeURIComponent(settle)}/price_orders`, "", body);
   }
 
+  async createFuturesTrailOrder({
+    settle = "usdt",
+    contract,
+    amount,
+    activationPrice,
+    callbackRate = 0.003,
+    isGte = true,
+    clientOrderId,
+  }) {
+    const normalizedAmount = trimInteger(amount);
+    const normalizedActivationPrice = trimAmount(activationPrice);
+    const activationNumeric = Number.parseFloat(normalizedActivationPrice || "");
+    const callbackOffset = Number.isFinite(activationNumeric) && activationNumeric > 0
+      ? trimAmount(activationNumeric * callbackRate)
+      : "";
+    if (!contract || !normalizedAmount || !normalizedActivationPrice || !callbackOffset) {
+      return null;
+    }
+
+    const body = JSON.stringify({
+      contract,
+      amount: normalizedAmount,
+      activation_price: normalizedActivationPrice,
+      is_gte: Boolean(isGte),
+      price_offset: callbackOffset,
+      reduce_only: true,
+      text: clientOrderId || `t-trail-${Date.now().toString().slice(-8)}`,
+    });
+
+    if (this.dryRun) {
+      return {
+        dryRun: true,
+        endpoint: `/futures/${settle}/autoorder/v1/trail/create`,
+        requestBody: JSON.parse(body),
+      };
+    }
+
+    if (!this.isConfigured()) {
+      throw new Error("Gate API Key / Secret 尚未配置，暂时无法提交追踪止盈单");
+    }
+
+    return this.request(
+      "POST",
+      `/futures/${encodeURIComponent(settle)}/autoorder/v1/trail/create`,
+      "",
+      body,
+    );
+  }
+
   async placeFuturesProtectionOrders(action) {
     if (!String(action?.kind || "").startsWith("futures_")) {
       return [];
@@ -487,18 +536,52 @@ export class GateSpotClient {
     }
 
     const orders = [];
-    const takeProfit = Array.isArray(protectionPlan.takeProfits) ? protectionPlan.takeProfits[0] : null;
+    const takeProfits = Array.isArray(protectionPlan.takeProfits) ? protectionPlan.takeProfits : [];
+    const firstTakeProfit = protectionPlan.trailingTakeProfit?.activationPrice || takeProfits[0] || null;
+    const finalTakeProfit = protectionPlan.finalTakeProfit || takeProfits[1] || firstTakeProfit;
     const stopLoss = protectionPlan.stopLoss ?? null;
+    const preview = await this.previewTrade(action);
+    const closeAmount = trimInteger(action.size || preview?.estimatedContracts);
 
-    if (takeProfit) {
+    if (protectionPlan.trailingTakeProfit?.activationPrice && closeAmount) {
+      orders.push({
+        type: "take_profit_trailing",
+        triggerPrice: protectionPlan.trailingTakeProfit.activationPrice,
+        callbackRate: protectionPlan.trailingTakeProfit.callbackRate || 0.003,
+        request: await this.createFuturesTrailOrder({
+          settle,
+          contract,
+          amount: closeAmount,
+          activationPrice: protectionPlan.trailingTakeProfit.activationPrice,
+          callbackRate: protectionPlan.trailingTakeProfit.callbackRate || 0.003,
+          isGte: side === "buy",
+          clientOrderId: `t-trail-${Date.now().toString().slice(-8)}`,
+        }),
+      });
+    }
+
+    if (finalTakeProfit) {
       orders.push({
         type: "take_profit",
-        triggerPrice: takeProfit,
+        triggerPrice: finalTakeProfit,
         triggerRule: side === "buy" ? 1 : 2,
         request: await this.createFuturesPriceTriggeredOrder({
           settle,
           contract,
-          triggerPrice: takeProfit,
+          triggerPrice: finalTakeProfit,
+          triggerRule: side === "buy" ? 1 : 2,
+          clientOrderId: `t-tp-${Date.now().toString().slice(-8)}`,
+        }),
+      });
+    } else if (firstTakeProfit) {
+      orders.push({
+        type: "take_profit",
+        triggerPrice: firstTakeProfit,
+        triggerRule: side === "buy" ? 1 : 2,
+        request: await this.createFuturesPriceTriggeredOrder({
+          settle,
+          contract,
+          triggerPrice: firstTakeProfit,
           triggerRule: side === "buy" ? 1 : 2,
           clientOrderId: `t-tp-${Date.now().toString().slice(-8)}`,
         }),

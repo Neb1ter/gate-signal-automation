@@ -835,6 +835,19 @@ function deriveProtectionPlan(analysis, side, leverage) {
           ? [fallbackTakeProfit]
           : [],
       entryReference,
+      trailingTakeProfit:
+        explicitTakeProfits.length >= 2
+          ? {
+              activationPrice: roundProtectionPrice(explicitTakeProfits[0]),
+              callbackRate: 0.003,
+            }
+          : null,
+      finalTakeProfit:
+        explicitTakeProfits.length >= 2
+          ? roundProtectionPrice(explicitTakeProfits[1])
+          : explicitTakeProfits.length === 1
+            ? roundProtectionPrice(explicitTakeProfits[0])
+            : fallbackTakeProfit,
       riskRewardTarget:
         explicitTakeProfits.length || explicitStopLoss !== null
           ? "analyst_defined"
@@ -850,6 +863,8 @@ function deriveProtectionPlan(analysis, side, leverage) {
       stopLoss: null,
       takeProfits: [],
       entryReference,
+      trailingTakeProfit: null,
+      finalTakeProfit: null,
       riskRewardTarget: "",
     };
   }
@@ -861,6 +876,8 @@ function deriveProtectionPlan(analysis, side, leverage) {
     stopLoss: null,
     takeProfits: defaultTakeProfit !== null ? [defaultTakeProfit] : [],
     entryReference: roundProtectionPrice(entryReference),
+    trailingTakeProfit: null,
+    finalTakeProfit: defaultTakeProfit,
     riskRewardTarget: "100x_200pct_default_tp",
   };
 }
