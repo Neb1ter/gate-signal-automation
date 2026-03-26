@@ -708,6 +708,78 @@ function buildStructuredSummaryV3(analysis) {
   return lines.join("\n");
 }
 
+function buildStructuredSummaryV4(analysis) {
+  if (!analysis) {
+    return "";
+  }
+
+  const messageTypeLabel =
+    analysis.messageType === "strategy"
+      ? "交易策略"
+      : analysis.messageType === "analysis"
+        ? "行情分析"
+        : analysis.messageType === "watchlist"
+          ? "观察提醒"
+          : "普通转发";
+
+  const lines = [
+    `文案类型：${messageTypeLabel}`,
+    `币种：${analysis.asset || "未识别"}`,
+    `方向：${analysis.directionLabel || "未识别"}`,
+    `入场：${formatEntryForDisplay(analysis)}`,
+    `止损：${analysis.stopLoss ?? "未给出"}`,
+    `止盈：${formatTakeProfitsForDisplay(analysis)}`,
+    `周期：${analysis.timeframe || "未提及"}`,
+    `信号强度：${analysis.confidence || "中"}`,
+  ];
+
+  if (analysis.semanticSummary) {
+    lines.unshift(`语义判断：${analysis.semanticSummary}`);
+  }
+  if (analysis.executionIntent) {
+    lines.push(`执行意图：${analysis.executionIntent}`);
+  }
+  if (analysis.threadAggregationNote) {
+    lines.push(`线程备注：${analysis.threadAggregationNote}`);
+  }
+  if (analysis.leverage) {
+    lines.push(`杠杆：${analysis.leverage}`);
+  }
+  if (analysis.orderType) {
+    lines.push(`下单方式：${analysis.orderType === "limit" ? "限价单" : "市价单"}`);
+  }
+  if (analysis.suggestedEntryPrice) {
+    lines.push(`参考价格：${analysis.suggestedEntryPrice}`);
+  }
+  if (analysis.suggestedContracts) {
+    lines.push(`建议数量：${analysis.suggestedContracts} 张`);
+  } else if (analysis.suggestedMarginQuote) {
+    lines.push(`建议保证金：${analysis.suggestedMarginQuote} USDT`);
+  }
+  if (analysis.complianceComment) {
+    lines.push(`AI 复核备注：${analysis.complianceComment}`);
+  }
+  if (analysis.riskFlags?.length) {
+    lines.push(`风险提示：${analysis.riskFlags.join("；")}`);
+  }
+
+  return lines.join("\n");
+}
+
+function formatEntryForDisplay(analysis) {
+  if (!analysis?.entryText) {
+    return "未给出";
+  }
+  return analysis.entryText;
+}
+
+function formatTakeProfitsForDisplay(analysis) {
+  if (!analysis?.takeProfits?.length) {
+    return "未给出";
+  }
+  return analysis.takeProfits.join(" / ");
+}
+
 function roundProtectionPrice(value) {
   const numeric = toNumber(value);
   if (numeric === null) {
@@ -1156,7 +1228,7 @@ export function evaluateSignal(baseSignal, playbooks, config, store) {
       ? buildStructuredStrategy(baseSignal.text, baseSignal.sourceType)
       : null;
   if (analysis) {
-    analysis.normalizedSummary = buildStructuredSummaryV3(analysis);
+    analysis.normalizedSummary = buildStructuredSummaryV4(analysis);
   }
 
   const score = scoreSignal(baseSignal.text, matched.length, baseSignal.sourceType, analysis);
@@ -1234,6 +1306,10 @@ export function evaluateSignal(baseSignal, playbooks, config, store) {
       displaySourceName: presentation.displaySourceName,
       deliveryDisplayName: "",
       chatId: baseSignal.chatId,
+      threadId: baseSignal.threadId || "",
+      threadMessageCount: Number(baseSignal.threadMessageCount || 1),
+      threadAggregationNote: baseSignal.threadAggregationNote || "",
+      contextText: baseSignal.contextText || "",
       publishedAt: baseSignal.publishedAt,
       text: baseSignal.text,
       displayText: presentation.displayText,
@@ -1292,6 +1368,8 @@ export function applyAiAnalysis(signal, aiAnalysis) {
     suggestedContracts: aiAnalysis.suggestedContracts || signal.analysis.suggestedContracts,
     timeframe: aiAnalysis.timeframe || signal.analysis.timeframe,
     confidence: aiAnalysis.confidence || signal.analysis.confidence,
+    threadAggregationNote:
+      signal.threadAggregationNote || signal.analysis.threadAggregationNote || "",
     actionable: Boolean(
       aiAnalysis.actionable ??
         signal.analysis.actionable ??
@@ -1305,7 +1383,7 @@ export function applyAiAnalysis(signal, aiAnalysis) {
     riskFlags: unique([...(signal.analysis.riskFlags || []), ...(aiAnalysis.riskFlags || [])]),
   };
 
-  nextAnalysis.normalizedSummary = buildStructuredSummaryV3(nextAnalysis);
+  nextAnalysis.normalizedSummary = buildStructuredSummaryV4(nextAnalysis);
   signal.analysis = nextAnalysis;
 
   if (!signal.tradeIdea) {

@@ -111,6 +111,7 @@ export class JsonStore {
       runtimeSettings: {},
       knownTelegramChats: [],
       recentAnalystMessages: {},
+      analystThreadNotes: {},
     };
   }
 
@@ -311,6 +312,32 @@ export class JsonStore {
     this.state.recentAnalystMessages[id] = next;
     this.save();
     return next;
+  }
+
+  saveAnalystThreadNote(chatId, note) {
+    const id = String(chatId || "").trim();
+    if (!id) {
+      return null;
+    }
+
+    const next = {
+      threadId: String(note?.threadId || ""),
+      threadMessageCount: Number(note?.threadMessageCount || 0),
+      note: String(note?.note || ""),
+      updatedAt: String(note?.updatedAt || new Date().toISOString()),
+    };
+
+    this.state.analystThreadNotes[id] = next;
+    this.save();
+    return next;
+  }
+
+  getAnalystThreadNote(chatId) {
+    const id = String(chatId || "").trim();
+    if (!id) {
+      return null;
+    }
+    return this.state.analystThreadNotes?.[id] || null;
   }
 
   listSignals() {

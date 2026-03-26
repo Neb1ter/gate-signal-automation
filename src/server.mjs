@@ -717,6 +717,52 @@ async function processTelegramUpdate(update) {
   return processTelegramMessage(message);
 }
 
+function buildAnalystThreadContext(baseSignal, message) {
+  const recentContext = store.getRecentAnalystMessages(baseSignal.chatId, {
+    limit: 12,
+    windowMinutes: 180,
+  });
+  const currentEntry = {
+    messageId: String(message.message_id || message.id || ""),
+    publishedAt: baseSignal.publishedAt,
+    text: baseSignal.text,
+  };
+  const threadWindowMs = 5 * 60 * 1000;
+  const currentTime = Date.parse(baseSignal.publishedAt);
+  const candidateThread = [...recentContext, currentEntry].filter((item) => {
+    const timestamp = Date.parse(item?.publishedAt || "");
+    return Number.isFinite(timestamp) && currentTime - timestamp <= threadWindowMs;
+  });
+
+  if (candidateThread.length > 1) {
+    const firstAt = candidateThread[0]?.publishedAt || baseSignal.publishedAt;
+    baseSignal.threadId = `${baseSignal.chatId}:${Date.parse(firstAt) || Date.now()}`;
+    baseSignal.threadMessageCount = candidateThread.length;
+    baseSignal.threadAggregationNote = `已将最近 ${candidateThread.length} 条连续消息合并为同一策略线程`;
+    baseSignal.contextMessages = candidateThread.slice(0, -1);
+    baseSignal.contextText = [
+      ...candidateThread.slice(0, -1).map(
+        (item, index) =>
+          `上一段 ${index + 1}（${String(item.publishedAt || "").replace("T", " ").replace("Z", " UTC")}）:\n${item.text}`,
+      ),
+      `最新消息：\n${baseSignal.text}`,
+    ].join("\n\n");
+  } else {
+    baseSignal.threadId = `${baseSignal.chatId}:${currentTime || Date.now()}`;
+    baseSignal.threadMessageCount = 1;
+    baseSignal.threadAggregationNote = "当前按单条策略消息处理";
+  }
+
+  store.saveAnalystThreadNote(baseSignal.chatId, {
+    threadId: baseSignal.threadId,
+    threadMessageCount: baseSignal.threadMessageCount,
+    note: baseSignal.threadAggregationNote,
+    updatedAt: new Date().toISOString(),
+  });
+
+  store.appendRecentAnalystMessage(baseSignal.chatId, currentEntry);
+}
+
 async function processTelegramMessage(message) {
   if (!message) {
     return null;
@@ -732,6 +778,10 @@ async function processTelegramMessage(message) {
   }
 
   if (baseSignal.sourceType === "analyst" && baseSignal.chatId) {
+    buildAnalystThreadContext(baseSignal, message);
+  }
+
+  if (false && baseSignal.sourceType === "analyst" && baseSignal.chatId) {
     const recentContext = store.getRecentAnalystMessages(baseSignal.chatId, {
       limit: 6,
       windowMinutes: 180,
