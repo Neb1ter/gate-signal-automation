@@ -303,6 +303,44 @@ function parseTakeProfitsInput(value) {
     .filter(Boolean);
 }
 
+function normalizeProtectionPriceInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const numeric = Number.parseFloat(raw);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return "";
+  }
+  return String(numeric);
+}
+
+function buildManualProtectionPlan(existingPlan = {}, { stopLoss, takeProfits }) {
+  const normalizedTakeProfits = (takeProfits || [])
+    .map((value) => normalizeProtectionPriceInput(value))
+    .filter(Boolean);
+  const normalizedStopLoss = normalizeProtectionPriceInput(stopLoss);
+
+  return {
+    ...existingPlan,
+    stopLoss: normalizedStopLoss || null,
+    takeProfits: normalizedTakeProfits,
+    trailingTakeProfit:
+      normalizedTakeProfits.length >= 2
+        ? {
+            activationPrice: normalizedTakeProfits[0],
+            callbackRate: 0.003,
+          }
+        : null,
+    finalTakeProfit:
+      normalizedTakeProfits.length >= 2
+        ? normalizedTakeProfits[1]
+        : normalizedTakeProfits.length === 1
+          ? normalizedTakeProfits[0]
+          : null,
+  };
+}
+
 function applyManualTradeOverrides(signal, form = {}) {
   if (!signal) {
     return signal;
@@ -409,11 +447,10 @@ function applyManualTradeOverridesV2(signal, form = {}) {
       : "ioc";
   nextTradeIdea.account = "futures";
   nextTradeIdea.clientOrderId = `t-manual-${Date.now().toString().slice(-8)}`;
-  nextTradeIdea.protectionPlan = {
-    ...(existingTradeIdea.protectionPlan || {}),
-    stopLoss: stopLoss || null,
+  nextTradeIdea.protectionPlan = buildManualProtectionPlan(existingTradeIdea.protectionPlan || {}, {
+    stopLoss,
     takeProfits,
-  };
+  });
   nextTradeIdea.summary = `${nextTradeIdea.side === "buy" ? "合约做多" : "合约做空"} ${nextTradeIdea.symbol}，${
     nextTradeIdea.orderType === "limit" ? "限价单" : "市价单"
   }，${nextTradeIdea.leverage}x 杠杆，${
@@ -818,16 +855,29 @@ async function executeSignal(signal, trigger) {
   try {
     const result = await gateClient.placeTrade(signal.tradeIdea);
     let protectionOrders = [];
+    let protectionErrors = [];
     let protectionError = "";
     if (String(signal.tradeIdea.kind || "").startsWith("futures_")) {
       try {
-        protectionOrders = await gateClient.placeFuturesProtectionOrders(signal.tradeIdea);
+        const protectionResult = await gateClient.placeFuturesProtectionOrders(signal.tradeIdea);
+        if (Array.isArray(protectionResult)) {
+          protectionOrders = protectionResult;
+        } else {
+          protectionOrders = Array.isArray(protectionResult?.orders) ? protectionResult.orders : [];
+          protectionErrors = Array.isArray(protectionResult?.errors) ? protectionResult.errors : [];
+          protectionError = protectionErrors.join(" | ");
+        }
       } catch (error) {
         protectionError = error.message;
+        protectionErrors = [error.message];
       }
     }
     const executionResult = {
-      status: gateClient.dryRun ? "dry_run" : "submitted",
+      status: gateClient.dryRun
+        ? "dry_run"
+        : protectionErrors.length
+          ? "submitted_with_warnings"
+          : "submitted",
       trigger,
       message: gateClient.dryRun
         ? "当前是模拟模式，没有真实下单"
@@ -835,6 +885,7 @@ async function executeSignal(signal, trigger) {
       result: {
         ...result,
         protectionOrders,
+        protectionErrors,
         protectionError,
       },
       at: new Date().toISOString(),

@@ -524,7 +524,7 @@ export class GateSpotClient {
 
   async placeFuturesProtectionOrders(action) {
     if (!String(action?.kind || "").startsWith("futures_")) {
-      return [];
+      return { orders: [], errors: [] };
     }
 
     const protectionPlan = action?.protectionPlan || {};
@@ -532,78 +532,165 @@ export class GateSpotClient {
     const contract = String(action.contract || action.symbol || "").toUpperCase();
     const side = String(action.side || "").toLowerCase();
     if (!contract || !["buy", "sell"].includes(side) || action.reduceOnly === true) {
-      return [];
+      return { orders: [], errors: [] };
     }
 
     const orders = [];
+    const errors = [];
     const takeProfits = Array.isArray(protectionPlan.takeProfits) ? protectionPlan.takeProfits : [];
-    const firstTakeProfit = protectionPlan.trailingTakeProfit?.activationPrice || takeProfits[0] || null;
+    const trailingTakeProfit =
+      protectionPlan.trailingTakeProfit?.activationPrice
+        ? {
+            activationPrice: protectionPlan.trailingTakeProfit.activationPrice,
+            callbackRate: protectionPlan.trailingTakeProfit.callbackRate || 0.003,
+          }
+        : takeProfits.length >= 2
+          ? {
+              activationPrice: takeProfits[0],
+              callbackRate: 0.003,
+            }
+          : null;
+    const firstTakeProfit = trailingTakeProfit?.activationPrice || takeProfits[0] || null;
     const finalTakeProfit = protectionPlan.finalTakeProfit || takeProfits[1] || firstTakeProfit;
     const stopLoss = protectionPlan.stopLoss ?? null;
     const preview = await this.previewTrade(action);
     const closeAmount = trimInteger(action.size || preview?.estimatedContracts);
+    let lastPrice = null;
+    try {
+      const contractInfo = await this.getFuturesContract(contract, settle);
+      lastPrice =
+        parseNumeric(contractInfo?.last_price) ||
+        parseNumeric(contractInfo?.mark_price) ||
+        parseNumeric(contractInfo?.index_price);
+    } catch {
+      lastPrice = null;
+    }
 
-    if (protectionPlan.trailingTakeProfit?.activationPrice && closeAmount) {
-      orders.push({
-        type: "take_profit_trailing",
-        triggerPrice: protectionPlan.trailingTakeProfit.activationPrice,
-        callbackRate: protectionPlan.trailingTakeProfit.callbackRate || 0.003,
-        request: await this.createFuturesTrailOrder({
-          settle,
-          contract,
-          amount: closeAmount,
-          activationPrice: protectionPlan.trailingTakeProfit.activationPrice,
-          callbackRate: protectionPlan.trailingTakeProfit.callbackRate || 0.003,
-          isGte: side === "buy",
-          clientOrderId: `t-trail-${Date.now().toString().slice(-8)}`,
-        }),
-      });
+    const isValidTrigger = (triggerPrice, triggerRule) => {
+      const numeric = parseNumeric(triggerPrice);
+      if (numeric === null) {
+        return false;
+      }
+      if (lastPrice === null) {
+        return true;
+      }
+      return triggerRule === 1 ? numeric > lastPrice : numeric < lastPrice;
+    };
+
+    const pushError = (type, detail) => {
+      errors.push(`${type}: ${detail}`);
+    };
+
+    if (trailingTakeProfit?.activationPrice && closeAmount) {
+      const trailingTriggerOk =
+        lastPrice === null ||
+        (side === "buy"
+          ? parseNumeric(trailingTakeProfit.activationPrice) > lastPrice
+          : parseNumeric(trailingTakeProfit.activationPrice) < lastPrice);
+      if (!trailingTriggerOk) {
+        pushError(
+          "take_profit_trailing",
+          `activation ${trailingTakeProfit.activationPrice} is invalid near last price ${lastPrice}`,
+        );
+      } else {
+        try {
+          orders.push({
+            type: "take_profit_trailing",
+            triggerPrice: trailingTakeProfit.activationPrice,
+            callbackRate: trailingTakeProfit.callbackRate || 0.003,
+            request: await this.createFuturesTrailOrder({
+              settle,
+              contract,
+              amount: closeAmount,
+              activationPrice: trailingTakeProfit.activationPrice,
+              callbackRate: trailingTakeProfit.callbackRate || 0.003,
+              isGte: side === "buy",
+              clientOrderId: `t-trail-${Date.now().toString().slice(-8)}`,
+            }),
+          });
+        } catch (error) {
+          pushError("take_profit_trailing", error.message);
+        }
+      }
     }
 
     if (finalTakeProfit) {
-      orders.push({
-        type: "take_profit",
-        triggerPrice: finalTakeProfit,
-        triggerRule: side === "buy" ? 1 : 2,
-        request: await this.createFuturesPriceTriggeredOrder({
-          settle,
-          contract,
-          triggerPrice: finalTakeProfit,
-          triggerRule: side === "buy" ? 1 : 2,
-          clientOrderId: `t-tp-${Date.now().toString().slice(-8)}`,
-        }),
-      });
+      const triggerRule = side === "buy" ? 1 : 2;
+      if (!isValidTrigger(finalTakeProfit, triggerRule)) {
+        pushError(
+          "take_profit",
+          `trigger ${finalTakeProfit} is invalid near last price ${lastPrice}`,
+        );
+      } else {
+        try {
+          orders.push({
+            type: "take_profit",
+            triggerPrice: finalTakeProfit,
+            triggerRule,
+            request: await this.createFuturesPriceTriggeredOrder({
+              settle,
+              contract,
+              triggerPrice: finalTakeProfit,
+              triggerRule,
+              clientOrderId: `t-tp-${Date.now().toString().slice(-8)}`,
+            }),
+          });
+        } catch (error) {
+          pushError("take_profit", error.message);
+        }
+      }
     } else if (firstTakeProfit) {
-      orders.push({
-        type: "take_profit",
-        triggerPrice: firstTakeProfit,
-        triggerRule: side === "buy" ? 1 : 2,
-        request: await this.createFuturesPriceTriggeredOrder({
-          settle,
-          contract,
-          triggerPrice: firstTakeProfit,
-          triggerRule: side === "buy" ? 1 : 2,
-          clientOrderId: `t-tp-${Date.now().toString().slice(-8)}`,
-        }),
-      });
+      const triggerRule = side === "buy" ? 1 : 2;
+      if (!isValidTrigger(firstTakeProfit, triggerRule)) {
+        pushError(
+          "take_profit",
+          `trigger ${firstTakeProfit} is invalid near last price ${lastPrice}`,
+        );
+      } else {
+        try {
+          orders.push({
+            type: "take_profit",
+            triggerPrice: firstTakeProfit,
+            triggerRule,
+            request: await this.createFuturesPriceTriggeredOrder({
+              settle,
+              contract,
+              triggerPrice: firstTakeProfit,
+              triggerRule,
+              clientOrderId: `t-tp-${Date.now().toString().slice(-8)}`,
+            }),
+          });
+        } catch (error) {
+          pushError("take_profit", error.message);
+        }
+      }
     }
 
     if (stopLoss) {
-      orders.push({
-        type: "stop_loss",
-        triggerPrice: stopLoss,
-        triggerRule: side === "buy" ? 2 : 1,
-        request: await this.createFuturesPriceTriggeredOrder({
-          settle,
-          contract,
-          triggerPrice: stopLoss,
-          triggerRule: side === "buy" ? 2 : 1,
-          clientOrderId: `t-sl-${Date.now().toString().slice(-8)}`,
-        }),
-      });
+      const triggerRule = side === "buy" ? 2 : 1;
+      if (!isValidTrigger(stopLoss, triggerRule)) {
+        pushError("stop_loss", `trigger ${stopLoss} is invalid near last price ${lastPrice}`);
+      } else {
+        try {
+          orders.push({
+            type: "stop_loss",
+            triggerPrice: stopLoss,
+            triggerRule,
+            request: await this.createFuturesPriceTriggeredOrder({
+              settle,
+              contract,
+              triggerPrice: stopLoss,
+              triggerRule,
+              clientOrderId: `t-sl-${Date.now().toString().slice(-8)}`,
+            }),
+          });
+        } catch (error) {
+          pushError("stop_loss", error.message);
+        }
+      }
     }
 
-    return orders;
+    return { orders, errors };
   }
 
   async placeTrade(action) {
