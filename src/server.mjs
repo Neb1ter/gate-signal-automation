@@ -296,6 +296,13 @@ function parseFormBody(request) {
   });
 }
 
+function parseTakeProfitsInput(value) {
+  return String(value || "")
+    .split(/[,\n，/|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function applyManualTradeOverrides(signal, form = {}) {
   if (!signal) {
     return signal;
@@ -347,6 +354,81 @@ function applyManualTradeOverrides(signal, form = {}) {
   }，${nextTradeIdea.leverage}x 杠杆，${
     nextTradeIdea.size ? `数量 ${nextTradeIdea.size} 张` : `保证金 ${nextTradeIdea.marginQuote} USDT`
   }${nextTradeIdea.orderType === "limit" && nextTradeIdea.price ? `，价格 ${nextTradeIdea.price}` : ""}`;
+
+  signal.tradeIdea = nextTradeIdea;
+  return signal;
+}
+
+function applyManualTradeOverridesV2(signal, form = {}) {
+  if (!signal) {
+    return signal;
+  }
+
+  const existingTradeIdea = signal.tradeIdea || {};
+  const fallbackSymbol = String(
+    form.symbol ||
+      existingTradeIdea.symbol ||
+      existingTradeIdea.contract ||
+      signal.analysis?.symbol ||
+      "",
+  )
+    .trim()
+    .toUpperCase();
+  const fallbackContract = String(form.contract || existingTradeIdea.contract || fallbackSymbol)
+    .trim()
+    .toUpperCase();
+  const marginQuote = String(
+    form.marginQuote || existingTradeIdea.marginQuote || existingTradeIdea.amountQuote || "",
+  ).trim();
+  const size = String(form.size || existingTradeIdea.size || "").trim();
+  const stopLoss = String(form.stopLoss || "").trim();
+  const takeProfits = parseTakeProfitsInput(form.takeProfits);
+
+  const nextTradeIdea = {
+    ...existingTradeIdea,
+    orderType: ["market", "limit"].includes(String(form.orderType || "").toLowerCase())
+      ? String(form.orderType).toLowerCase()
+      : existingTradeIdea.orderType || "market",
+    side: ["buy", "sell"].includes(String(form.side || "").toLowerCase())
+      ? String(form.side).toLowerCase()
+      : existingTradeIdea.side || "buy",
+    leverage: String(form.leverage || existingTradeIdea.leverage || "20").replace(/x$/i, ""),
+    size,
+    price: String(form.price || existingTradeIdea.price || "").trim(),
+    marginQuote,
+    amountQuote: marginQuote,
+    contract: fallbackContract,
+    symbol: fallbackSymbol,
+    settle: String(form.settle || existingTradeIdea.settle || "usdt").trim().toLowerCase(),
+  };
+
+  nextTradeIdea.kind = nextTradeIdea.orderType === "limit" ? "futures_limit" : "futures_market";
+  nextTradeIdea.timeInForce =
+    nextTradeIdea.orderType === "limit"
+      ? String(form.timeInForce || existingTradeIdea.timeInForce || "gtc").toLowerCase()
+      : "ioc";
+  nextTradeIdea.account = "futures";
+  nextTradeIdea.clientOrderId = `t-manual-${Date.now().toString().slice(-8)}`;
+  nextTradeIdea.protectionPlan = {
+    ...(existingTradeIdea.protectionPlan || {}),
+    stopLoss: stopLoss || null,
+    takeProfits,
+  };
+  nextTradeIdea.summary = `${nextTradeIdea.side === "buy" ? "合约做多" : "合约做空"} ${nextTradeIdea.symbol}，${
+    nextTradeIdea.orderType === "limit" ? "限价单" : "市价单"
+  }，${nextTradeIdea.leverage}x 杠杆，${
+    nextTradeIdea.marginQuote
+      ? `保证金 ${nextTradeIdea.marginQuote} USDT 优先`
+      : nextTradeIdea.size
+        ? `数量 ${nextTradeIdea.size} 张`
+        : "待补充仓位"
+  }${nextTradeIdea.orderType === "limit" && nextTradeIdea.price ? `，价格 ${nextTradeIdea.price}` : ""}${
+    nextTradeIdea.protectionPlan.stopLoss ? `，止损 ${nextTradeIdea.protectionPlan.stopLoss}` : ""
+  }${
+    nextTradeIdea.protectionPlan.takeProfits?.length
+      ? `，止盈 ${nextTradeIdea.protectionPlan.takeProfits.join("/")}`
+      : ""
+  }`;
 
   signal.tradeIdea = nextTradeIdea;
   return signal;
@@ -1062,7 +1144,7 @@ async function handleSignalAction(signalId, action, form = {}) {
     };
   }
 
-  if (["executed", "dry_run_executed", "execution_failed"].includes(signal.executionStatus)) {
+  if (["executed", "dry_run_executed"].includes(signal.executionStatus)) {
     return {
       statusCode: 200,
       title: "处理完成",
@@ -1083,7 +1165,7 @@ async function handleSignalAction(signalId, action, form = {}) {
   signal.reviewedAt = new Date().toISOString();
   signal.reviewDecision = action;
   if (action === "approve") {
-    applyManualTradeOverrides(signal, form);
+    applyManualTradeOverridesV2(signal, form);
     store.upsertSignal(signal);
   }
   const executionResult = await executeSignal(signal, "manual_approval");

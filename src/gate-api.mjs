@@ -251,6 +251,30 @@ export class GateSpotClient {
     marginQuote,
     suggestedSize,
   }) {
+    const multiplier = Number.parseFloat(contractInfo?.quanto_multiplier || "");
+    const numericPrice = Number.parseFloat(referencePrice || "");
+    const numericLeverage = Number.parseFloat(String(leverage || "").replace(/x$/i, ""));
+    const numericMargin = Number.parseFloat(marginQuote || "");
+    if (
+      Number.isFinite(multiplier) &&
+      multiplier > 0 &&
+      Number.isFinite(numericPrice) &&
+      numericPrice > 0 &&
+      Number.isFinite(numericLeverage) &&
+      numericLeverage > 0 &&
+      Number.isFinite(numericMargin) &&
+      numericMargin > 0
+    ) {
+      const contracts = Math.max(
+        Math.floor((numericMargin * numericLeverage) / (numericPrice * multiplier)),
+        1,
+      );
+      return {
+        size: String(contracts),
+        source: "margin_estimate",
+      };
+    }
+
     const explicitSize = trimInteger(suggestedSize);
     if (explicitSize) {
       return {
@@ -259,10 +283,6 @@ export class GateSpotClient {
       };
     }
 
-    const multiplier = Number.parseFloat(contractInfo?.quanto_multiplier || "");
-    const numericPrice = Number.parseFloat(referencePrice || "");
-    const numericLeverage = Number.parseFloat(String(leverage || "").replace(/x$/i, ""));
-    const numericMargin = Number.parseFloat(marginQuote || "");
     if (
       !Number.isFinite(multiplier) ||
       multiplier <= 0 ||
@@ -279,10 +299,9 @@ export class GateSpotClient {
       };
     }
 
-    const contracts = Math.max(Math.floor((numericMargin * numericLeverage) / (numericPrice * multiplier)), 1);
     return {
-      size: String(contracts),
-      source: "margin_estimate",
+      size: "",
+      source: "unresolved",
     };
   }
 
