@@ -134,7 +134,7 @@ function buildPrimaryMessages(signal) {
     {
       role: "system",
       content:
-        "You are a trading-signal semantic analysis assistant. First understand what the analyst actually means, then convert that meaning into strict JSON only. Do not add explanations. Do not invent missing facts. The latest message is always the highest priority, but you may use recent context when the analyst sends a strategy in multiple consecutive parts. messageType must be one of strategy, analysis, watchlist, brief. direction must be buy, sell, or an empty string. orderType must be market, limit, or an empty string. semanticSummary should be a short Chinese summary of the real intent. executionIntent should be one of enter, scale_in, reduce, exit, wait, hedge, unclear.",
+        "You are a trading-signal semantic analysis assistant. First understand what the analyst actually means, then convert that meaning into strict JSON only. Do not add explanations. Do not invent missing facts. The latest message is always the highest priority, but you may use recent context when the analyst sends a strategy in multiple consecutive parts. messageType must be one of strategy, analysis, watchlist, brief. direction must be buy, sell, or an empty string. orderType must be market, limit, or an empty string. semanticSummary should be a short Chinese summary of the real intent. executionIntent should be one of enter, scale_in, reduce, exit, wait, hedge, cancel, protect, unclear.",
     },
     {
       role: "user",
@@ -178,7 +178,7 @@ function buildReviewMessages(signal, extracted) {
     {
       role: "system",
       content:
-        "You are a trading-risk review assistant. Re-check the extracted result against the original analyst text and any recent context, then return strict JSON only. Focus on whether the semantic meaning was understood correctly, whether the fields are reasonable, whether the signal is automation-ready, and whether there is ambiguity or risk. automationReady should be true only when the asset, direction, and execution intent are all sufficiently clear.",
+        "You are a trading-risk review assistant. Re-check the extracted result against the original analyst text and any recent context, then return strict JSON only. Focus on whether the semantic meaning was understood correctly, whether the fields are reasonable, whether the signal is automation-ready, and whether there is ambiguity or risk. executionIntent may also be cancel or protect when the analyst is managing an existing order. automationReady should be true only when the asset, direction, and execution intent are all sufficiently clear.",
     },
     {
       role: "user",

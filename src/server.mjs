@@ -479,6 +479,98 @@ function signApprovalToken(signalId) {
     .digest("hex");
 }
 
+function cloneJson(value) {
+  return value ? JSON.parse(JSON.stringify(value)) : value;
+}
+
+function extractProtectionOrderRecord(order) {
+  const request = order?.request || {};
+  return {
+    type: String(order?.type || "").trim(),
+    triggerPrice: String(order?.triggerPrice || "").trim(),
+    triggerRule: order?.triggerRule ?? "",
+    callbackRate: order?.callbackRate ?? "",
+    orderId: String(request?.id || request?.data?.id || "").trim(),
+    trailId: String(request?.data?.id || request?.id || "").trim(),
+    active: true,
+    createdAt: new Date().toISOString(),
+    raw: request,
+  };
+}
+
+function createExecutionBundle(signal, trigger, actionType = "open") {
+  const previousExecutions = store.listExecutionsForSignal(signal.id);
+  return {
+    id: crypto.randomUUID(),
+    signalId: signal.id,
+    chatId: signal.chatId,
+    sourceType: signal.sourceType,
+    sourceName: signal.sourceName,
+    symbol: String(signal.tradeIdea?.symbol || signal.analysis?.symbol || "").toUpperCase(),
+    contract: String(signal.tradeIdea?.contract || signal.tradeIdea?.symbol || "").toUpperCase(),
+    settle: String(signal.tradeIdea?.settle || "usdt").toLowerCase(),
+    trigger,
+    actionType,
+    attemptNo: previousExecutions.length + 1,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    requestSnapshot: cloneJson(signal.tradeIdea || {}),
+    protectionPlanSnapshot: cloneJson(signal.tradeIdea?.protectionPlan || {}),
+    mainOrder: null,
+    protectionOrders: [],
+    protectionErrors: [],
+    cancellation: null,
+  };
+}
+
+function attachExecutionToSignal(signal, execution) {
+  signal.executionIds = Array.isArray(signal.executionIds) ? signal.executionIds : [];
+  if (!signal.executionIds.includes(execution.id)) {
+    signal.executionIds.push(execution.id);
+  }
+  signal.latestExecutionId = execution.id;
+}
+
+function resolveDecisionAction(signal, form = {}) {
+  const requested = String(form.decisionAction || "").trim().toLowerCase();
+  if (["open", "cancel", "protect"].includes(requested)) {
+    return requested;
+  }
+
+  const lifecycleHint = String(signal.managementIntent || "").trim().toLowerCase();
+  if (["cancel", "protect"].includes(lifecycleHint)) {
+    return lifecycleHint;
+  }
+  return "open";
+}
+
+function detectLifecycleIntent(signal) {
+  if (!signal || signal.sourceType !== "analyst") {
+    return "";
+  }
+
+  const text = String(signal.text || "").toLowerCase();
+  if (/(撤单|撤掉|取消挂单|取消订单|撤销挂单|撤销订单)/i.test(text)) {
+    return "cancel";
+  }
+  if (/(保护|保本|移动止损|上移止损|锁盈|带保护)/i.test(text)) {
+    return "protect";
+  }
+  return "";
+}
+
+function listRelatedExecutions(signal) {
+  const symbol = String(signal.tradeIdea?.symbol || signal.analysis?.symbol || "").toUpperCase();
+  return store.listExecutionsByFilter({
+    chatId: signal.chatId,
+    sourceType: signal.sourceType,
+    symbol,
+    onlyActive: false,
+    limit: 12,
+  });
+}
+
 function verifyApprovalToken(signalId, token) {
   return token && token === signApprovalToken(signalId);
 }
@@ -813,6 +905,15 @@ async function finalizeSignalProcessing(signalId) {
       signal.aiCompletedAt = new Date().toISOString();
     }
     reconcileAnalystSignalWithAi(signal, runtimeSettings, config, store);
+    const lifecycleIntent = detectLifecycleIntent(signal);
+    if (lifecycleIntent) {
+      signal.managementIntent = lifecycleIntent;
+      signal.executionStatus = "pending_approval";
+      signal.executionReason =
+        lifecycleIntent === "cancel"
+          ? "分析师发出了撤单指令，等待你选择对应订单执行撤单"
+          : "分析师发出了保护指令，等待你确认要调整哪一单的保护计划";
+    }
   }
 
   const deliveryOptions = getSignalDeliveryOptionsSafe(signal);
@@ -842,10 +943,81 @@ async function finalizeSignalProcessing(signalId) {
   return signal;
 }
 
-async function executeSignal(signal, trigger) {
+async function executeSignal(signal, trigger, options = {}) {
   const runtimeSettings = getRuntimeSettings();
   const gateClient = createGateClient(runtimeSettings);
   const deliveryOptions = getSignalDeliveryOptionsSafe(signal);
+  const decisionAction = resolveDecisionAction(signal, options.form || {});
+  const targetExecutionId = String(options.targetExecutionId || options.form?.targetExecutionId || "").trim();
+  if (decisionAction === "cancel") {
+    const targetExecution =
+      (targetExecutionId && store.getExecution(targetExecutionId)) ||
+      listRelatedExecutions(signal).find((item) =>
+        ["submitted", "submitted_with_warnings", "protected", "partially_cancelled"].includes(
+          String(item.status || ""),
+        ),
+      );
+
+    if (!targetExecution) {
+      return {
+        status: "failed",
+        trigger,
+        actionType: "cancel",
+        message: "没有找到可撤销的目标订单，请先在决策面板里选择要撤销的那一单。",
+        at: new Date().toISOString(),
+      };
+    }
+
+    const cancelResult = await gateClient.cancelFuturesExecutionBundle(targetExecution);
+    const executionBundle = createExecutionBundle(signal, trigger, "cancel");
+    executionBundle.targetExecutionId = targetExecution.id;
+    executionBundle.status = cancelResult.errors.length ? "partially_cancelled" : "cancelled";
+    executionBundle.mainOrder = cloneJson(targetExecution.mainOrder);
+    executionBundle.protectionOrders = (Array.isArray(targetExecution.protectionOrders)
+      ? targetExecution.protectionOrders
+      : []
+    ).map((item) => ({
+      ...item,
+      active: false,
+      cancelledAt: new Date().toISOString(),
+    }));
+    executionBundle.protectionErrors = cancelResult.errors || [];
+    executionBundle.cancellation = {
+      ...cancelResult,
+      at: new Date().toISOString(),
+      kind: "bundle_cancel",
+    };
+    executionBundle.updatedAt = executionBundle.cancellation.at;
+    store.upsertExecution(executionBundle);
+    attachExecutionToSignal(signal, executionBundle);
+
+    targetExecution.status = executionBundle.status;
+    targetExecution.updatedAt = executionBundle.updatedAt;
+    targetExecution.cancellation = executionBundle.cancellation;
+    targetExecution.protectionOrders = executionBundle.protectionOrders;
+    if (targetExecution.mainOrder) {
+      targetExecution.mainOrder.cancelledAt = executionBundle.updatedAt;
+      targetExecution.mainOrder.cancelResult = cancelResult.mainOrder;
+    }
+    store.upsertExecution(targetExecution);
+
+    const executionResult = {
+      status: cancelResult.errors.length ? "submitted_with_warnings" : "submitted",
+      trigger,
+      actionType: "cancel",
+      targetExecutionId: targetExecution.id,
+      message: cancelResult.errors.length
+        ? "目标订单已执行撤单，但部分止盈止损撤销失败，请查看详情。"
+        : "目标订单及其关联止盈止损已全部撤销。",
+      result: cancelResult,
+      at: executionBundle.updatedAt,
+    };
+    signal.executionStatus = executionBundle.status;
+    signal.executionResult = executionResult;
+    store.upsertSignal(signal);
+    await safeNotifyExecutionResult(signal, executionResult, deliveryOptions);
+    return executionResult;
+  }
   if (!signal.tradeIdea) {
     return {
       status: "skipped",
@@ -853,7 +1025,98 @@ async function executeSignal(signal, trigger) {
     };
   }
 
+  const executionBundle = createExecutionBundle(
+    signal,
+    trigger,
+    decisionAction === "protect" ? "protect" : "open",
+  );
+  store.upsertExecution(executionBundle);
+  attachExecutionToSignal(signal, executionBundle);
+  store.upsertSignal(signal);
+
   try {
+    if (decisionAction === "protect") {
+      const targetExecution =
+        (targetExecutionId && store.getExecution(targetExecutionId)) ||
+        listRelatedExecutions(signal).find((item) =>
+          ["submitted", "submitted_with_warnings", "protected", "partially_cancelled"].includes(
+            String(item.status || ""),
+          ),
+        );
+
+      if (!targetExecution) {
+        throw new Error("没有找到可调整保护计划的目标订单，请先在面板里选择目标单。");
+      }
+
+      const cancelResult = await gateClient.cancelFuturesExecutionBundle({
+        ...targetExecution,
+        mainOrder: {
+          ...targetExecution.mainOrder,
+          cancelable: false,
+        },
+      });
+
+      const protectAction = {
+        ...cloneJson(targetExecution.requestSnapshot || {}),
+        ...cloneJson(signal.tradeIdea || {}),
+        size:
+          signal.tradeIdea?.size ||
+          targetExecution.requestSnapshot?.size ||
+          targetExecution.mainOrder?.size ||
+          "",
+        protectionPlan: cloneJson(signal.tradeIdea?.protectionPlan || {}),
+      };
+
+      const protectionResult = await gateClient.placeFuturesProtectionOrders(protectAction);
+      const protectionOrders = Array.isArray(protectionResult?.orders)
+        ? protectionResult.orders.map(extractProtectionOrderRecord)
+        : [];
+      const protectionErrors = [
+        ...(cancelResult.errors || []),
+        ...(Array.isArray(protectionResult?.errors) ? protectionResult.errors : []),
+      ];
+
+      executionBundle.targetExecutionId = targetExecution.id;
+      executionBundle.status = protectionErrors.length ? "submitted_with_warnings" : "protected";
+      executionBundle.mainOrder = cloneJson(targetExecution.mainOrder);
+      executionBundle.protectionOrders = protectionOrders;
+      executionBundle.protectionErrors = protectionErrors;
+      executionBundle.cancellation = {
+        ...cancelResult,
+        at: new Date().toISOString(),
+        protectionOnly: true,
+      };
+      executionBundle.updatedAt = executionBundle.cancellation.at;
+      store.upsertExecution(executionBundle);
+
+      targetExecution.updatedAt = executionBundle.updatedAt;
+      targetExecution.status = executionBundle.status;
+      targetExecution.protectionOrders = protectionOrders;
+      targetExecution.protectionErrors = protectionErrors;
+      store.upsertExecution(targetExecution);
+
+      const executionResult = {
+        status: protectionErrors.length ? "submitted_with_warnings" : "submitted",
+        trigger,
+        actionType: "protect",
+        targetExecutionId: targetExecution.id,
+        message: protectionErrors.length
+          ? "保护计划已更新，但部分止盈止损挂单失败，请查看详情。"
+          : "保护计划已更新，新的止盈止损已提交到 Gate。",
+        result: {
+          cancelResult,
+          protectionOrders,
+          protectionErrors,
+        },
+        at: executionBundle.updatedAt,
+      };
+      signal.executionStatus = executionBundle.status;
+      signal.executionResult = executionResult;
+      store.upsertSignal(signal);
+      await safeNotifyExecutionResult(signal, executionResult, deliveryOptions);
+      return executionResult;
+    }
+
     const result = await gateClient.placeTrade(signal.tradeIdea);
     let protectionOrders = [];
     let protectionErrors = [];
@@ -862,9 +1125,11 @@ async function executeSignal(signal, trigger) {
       try {
         const protectionResult = await gateClient.placeFuturesProtectionOrders(signal.tradeIdea);
         if (Array.isArray(protectionResult)) {
-          protectionOrders = protectionResult;
+          protectionOrders = protectionResult.map(extractProtectionOrderRecord);
         } else {
-          protectionOrders = Array.isArray(protectionResult?.orders) ? protectionResult.orders : [];
+          protectionOrders = Array.isArray(protectionResult?.orders)
+            ? protectionResult.orders.map(extractProtectionOrderRecord)
+            : [];
           protectionErrors = Array.isArray(protectionResult?.errors) ? protectionResult.errors : [];
           protectionError = protectionErrors.join(" | ");
         }
@@ -880,6 +1145,7 @@ async function executeSignal(signal, trigger) {
           ? "submitted_with_warnings"
           : "submitted",
       trigger,
+      actionType: "open",
       message: gateClient.dryRun
         ? "当前是模拟模式，没有真实下单"
         : "真实订单已提交到 Gate",
@@ -894,6 +1160,24 @@ async function executeSignal(signal, trigger) {
 
     signal.executionStatus = gateClient.dryRun ? "dry_run_executed" : "executed";
     signal.executionResult = executionResult;
+    executionBundle.status = executionResult.status;
+    executionBundle.updatedAt = executionResult.at;
+    executionBundle.mainOrder = {
+      orderId: String(result?.id || ""),
+      status: String(result?.status || ""),
+      finishAs: String(result?.finish_as || ""),
+      orderType: signal.tradeIdea.orderType || "",
+      side: signal.tradeIdea.side || "",
+      price: String(signal.tradeIdea.price || result?.fill_price || result?.avg_deal_price || ""),
+      size: String(signal.tradeIdea.size || result?.size || ""),
+      cancelable:
+        String(signal.tradeIdea.orderType || "").toLowerCase() === "limit" &&
+        !["finished", "cancelled", "filled"].includes(String(result?.status || "").toLowerCase()),
+      raw: cloneJson(result),
+    };
+    executionBundle.protectionOrders = protectionOrders;
+    executionBundle.protectionErrors = protectionErrors;
+    store.upsertExecution(executionBundle);
     store.upsertSignal(signal);
     const feeValue =
       Number.parseFloat(result?.fee || "") ||
@@ -913,6 +1197,7 @@ async function executeSignal(signal, trigger) {
     store.appendTrade({
       createdAt: executionResult.at,
       signalId: signal.id,
+      executionId: executionBundle.id,
       chatId: signal.chatId,
       sourceType: signal.sourceType,
       sourceName: signal.sourceName,
@@ -940,11 +1225,17 @@ async function executeSignal(signal, trigger) {
     const executionResult = {
       status: "failed",
       trigger,
+      actionType: decisionAction,
       message: error.message,
       at: new Date().toISOString(),
     };
     signal.executionStatus = "execution_failed";
     signal.executionResult = executionResult;
+    executionBundle.status = "failed";
+    executionBundle.updatedAt = executionResult.at;
+    executionBundle.protectionErrors = [error.message];
+    executionBundle.error = error.message;
+    store.upsertExecution(executionBundle);
     store.upsertSignal(signal);
     await safeNotifyExecutionResult(signal, executionResult, deliveryOptions);
     return executionResult;
@@ -1209,7 +1500,7 @@ async function handleSignalAction(signalId, action, form = {}) {
     };
   }
 
-  if (["executed", "dry_run_executed"].includes(signal.executionStatus)) {
+  if (false && ["executed", "dry_run_executed"].includes(signal.executionStatus)) {
     return {
       statusCode: 200,
       title: "处理完成",
@@ -1218,7 +1509,7 @@ async function handleSignalAction(signalId, action, form = {}) {
     };
   }
 
-  if (signal.executionStatus === "rejected") {
+  if (signal.executionStatus === "rejected" && action !== "approve") {
     return {
       statusCode: 200,
       title: "已忽略",
@@ -1233,7 +1524,10 @@ async function handleSignalAction(signalId, action, form = {}) {
     applyManualTradeOverridesV2(signal, form);
     store.upsertSignal(signal);
   }
-  const executionResult = await executeSignal(signal, "manual_approval");
+  const executionResult = await executeSignal(signal, "manual_approval", {
+    form,
+    targetExecutionId: form.targetExecutionId,
+  });
 
   return {
     statusCode: 200,
@@ -1445,8 +1739,11 @@ const server = http.createServer(async (request, response) => {
         json(response, 401, { error: "Invalid approval token" });
         return;
       }
-      const preview = signal.tradeIdea ? await createGateClient(getRuntimeSettings()).previewTrade(signal.tradeIdea) : null;
-      html(response, 200, renderSignalReviewPage(signal, token, { preview }));
+      const preview = signal.tradeIdea
+        ? await createGateClient(getRuntimeSettings()).previewTrade(signal.tradeIdea)
+        : null;
+      const relatedExecutions = listRelatedExecutions(signal);
+      html(response, 200, renderSignalReviewPage(signal, token, { preview, relatedExecutions }));
       return;
     }
 

@@ -702,6 +702,145 @@ export class GateSpotClient {
     return { orders, errors };
   }
 
+  async cancelFuturesOrder({ settle = "usdt", orderId }) {
+    const normalizedOrderId = String(orderId || "").trim();
+    if (!normalizedOrderId) {
+      return null;
+    }
+
+    if (this.dryRun) {
+      return {
+        dryRun: true,
+        endpoint: `/futures/${settle}/orders/${normalizedOrderId}`,
+        orderId: normalizedOrderId,
+      };
+    }
+
+    if (!this.isConfigured()) {
+      throw new Error("Gate API Key / Secret 尚未配置，暂时无法撤销合约主单");
+    }
+
+    return this.request(
+      "DELETE",
+      `/futures/${encodeURIComponent(settle)}/orders/${encodeURIComponent(normalizedOrderId)}`,
+      "",
+      "",
+    );
+  }
+
+  async cancelFuturesPriceTriggeredOrder({ settle = "usdt", orderId }) {
+    const normalizedOrderId = String(orderId || "").trim();
+    if (!normalizedOrderId) {
+      return null;
+    }
+
+    if (this.dryRun) {
+      return {
+        dryRun: true,
+        endpoint: `/futures/${settle}/price_orders/${normalizedOrderId}`,
+        orderId: normalizedOrderId,
+      };
+    }
+
+    if (!this.isConfigured()) {
+      throw new Error("Gate API Key / Secret 尚未配置，暂时无法撤销合约条件单");
+    }
+
+    return this.request(
+      "DELETE",
+      `/futures/${encodeURIComponent(settle)}/price_orders/${encodeURIComponent(normalizedOrderId)}`,
+      "",
+      "",
+    );
+  }
+
+  async stopFuturesTrailOrder({ settle = "usdt", trailId, text = "" }) {
+    const normalizedTrailId = String(trailId || "").trim();
+    if (!normalizedTrailId) {
+      return null;
+    }
+
+    const body = JSON.stringify({
+      id: Number.parseInt(normalizedTrailId, 10) || normalizedTrailId,
+      text: text || `t-stop-trail-${Date.now().toString().slice(-8)}`,
+    });
+
+    if (this.dryRun) {
+      return {
+        dryRun: true,
+        endpoint: `/futures/${settle}/autoorder/v1/trail/stop`,
+        requestBody: JSON.parse(body),
+      };
+    }
+
+    if (!this.isConfigured()) {
+      throw new Error("Gate API Key / Secret 尚未配置，暂时无法停止追踪止盈单");
+    }
+
+    return this.request(
+      "POST",
+      `/futures/${encodeURIComponent(settle)}/autoorder/v1/trail/stop`,
+      "",
+      body,
+    );
+  }
+
+  async cancelFuturesProtectionOrder(order, settle = "usdt") {
+    if (!order || order.active === false) {
+      return { skipped: true };
+    }
+
+    if (order.type === "take_profit_trailing") {
+      return this.stopFuturesTrailOrder({
+        settle,
+        trailId: order.trailId || order.id,
+        text: `t-stop-trail-${Date.now().toString().slice(-8)}`,
+      });
+    }
+
+    return this.cancelFuturesPriceTriggeredOrder({
+      settle,
+      orderId: order.orderId || order.id,
+    });
+  }
+
+  async cancelFuturesExecutionBundle(bundle) {
+    const settle = String(bundle?.settle || "usdt").toLowerCase();
+    const result = {
+      mainOrder: null,
+      protectionOrders: [],
+      errors: [],
+    };
+
+    if (bundle?.mainOrder?.orderId && bundle?.mainOrder?.cancelable !== false) {
+      try {
+        result.mainOrder = await this.cancelFuturesOrder({
+          settle,
+          orderId: bundle.mainOrder.orderId,
+        });
+      } catch (error) {
+        result.errors.push(`main_order: ${error.message}`);
+      }
+    }
+
+    for (const order of Array.isArray(bundle?.protectionOrders) ? bundle.protectionOrders : []) {
+      if (order.active === false) {
+        continue;
+      }
+      try {
+        const response = await this.cancelFuturesProtectionOrder(order, settle);
+        result.protectionOrders.push({
+          ...order,
+          cancelResult: response,
+        });
+      } catch (error) {
+        result.errors.push(`${order.type || "protection"}: ${error.message}`);
+      }
+    }
+
+    return result;
+  }
+
   async placeTrade(action) {
     if (String(action?.kind || "").startsWith("futures_")) {
       return this.placeFuturesOrder(action);

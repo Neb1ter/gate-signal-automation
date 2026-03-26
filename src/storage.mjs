@@ -110,6 +110,7 @@ export class JsonStore {
       telegramOffset: 0,
       signals: [],
       trades: [],
+      executions: [],
       runtimeSettings: {},
       knownTelegramChats: [],
       recentAnalystMessages: {},
@@ -386,6 +387,63 @@ export class JsonStore {
   appendTrade(trade) {
     this.state.trades.push(trade);
     this.save();
+  }
+
+  upsertExecution(execution) {
+    const index = this.state.executions.findIndex((item) => item.id === execution.id);
+    if (index >= 0) {
+      this.state.executions[index] = execution;
+    } else {
+      this.state.executions.push(execution);
+    }
+    this.save();
+  }
+
+  getExecution(id) {
+    return this.state.executions.find((item) => item.id === id) || null;
+  }
+
+  listExecutionsForSignal(signalId) {
+    return this.state.executions
+      .filter((item) => String(item.signalId || "") === String(signalId || ""))
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  }
+
+  listExecutionsByFilter({
+    chatId = "",
+    sourceType = "",
+    symbol = "",
+    onlyActive = false,
+    limit = 20,
+  } = {}) {
+    const wantedChatId = String(chatId || "").trim();
+    const wantedSourceType = String(sourceType || "").trim();
+    const wantedSymbol = String(symbol || "").trim().toUpperCase();
+    const activeStatuses = new Set([
+      "submitted",
+      "submitted_with_warnings",
+      "partially_cancelled",
+      "protected",
+    ]);
+
+    return this.state.executions
+      .filter((item) => {
+        if (wantedChatId && String(item.chatId || "") !== wantedChatId) {
+          return false;
+        }
+        if (wantedSourceType && String(item.sourceType || "") !== wantedSourceType) {
+          return false;
+        }
+        if (wantedSymbol && String(item.symbol || "").toUpperCase() !== wantedSymbol) {
+          return false;
+        }
+        if (onlyActive && !activeStatuses.has(String(item.status || ""))) {
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .slice(0, limit);
   }
 
   listTrades() {
