@@ -35,6 +35,84 @@ function normalizeArray(value) {
     : [];
 }
 
+function normalizeAsset(value) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) {
+    return "";
+  }
+  const aliases = new Map([
+    ["比特币", "BTC"],
+    ["BTC", "BTC"],
+    ["ETH", "ETH"],
+    ["以太", "ETH"],
+    ["以太坊", "ETH"],
+    ["SOL", "SOL"],
+    ["SUI", "SUI"],
+    ["XRP", "XRP"],
+    ["BNB", "BNB"],
+    ["黄金", "XAU"],
+    ["XAU", "XAU"],
+  ]);
+  return aliases.get(raw) || raw.replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeSymbol(value, asset = "") {
+  const raw = String(value || "").trim().toUpperCase();
+  if (raw) {
+    if (raw.includes("/")) {
+      return raw.replace("/", "_");
+    }
+    if (raw.includes("_")) {
+      return raw;
+    }
+    if (/^[A-Z0-9]{2,12}$/.test(raw)) {
+      return `${raw}_USDT`;
+    }
+  }
+  const normalizedAsset = normalizeAsset(asset);
+  return normalizedAsset ? `${normalizedAsset}_USDT` : "";
+}
+
+function normalizeNumber(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  const numeric = Number.parseFloat(String(value).replaceAll(",", "").trim());
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function normalizeLeverage(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const match = raw.match(/(\d{1,3})/);
+  return match?.[1] ? `${match[1]}x` : "";
+}
+
+function normalizeTakeProfitValues(value) {
+  return normalizeArray(value)
+    .map((item) => String(item).replaceAll(",", "").trim())
+    .filter(Boolean);
+}
+
+function buildEntryText(entryText, entryLow, entryHigh, suggestedEntryPrice) {
+  const existing = String(entryText || "").trim();
+  if (existing) {
+    return existing;
+  }
+  if (entryLow !== null && entryHigh !== null) {
+    return entryLow === entryHigh ? String(entryLow) : `${entryLow}-${entryHigh}`;
+  }
+  if (entryLow !== null) {
+    return String(entryLow);
+  }
+  if (entryHigh !== null) {
+    return String(entryHigh);
+  }
+  return String(suggestedEntryPrice || "").trim();
+}
+
 function normalizeDirection(value) {
   const normalized = String(value || "").toLowerCase();
   if (["buy", "long", "bullish"].includes(normalized)) {
@@ -95,6 +173,26 @@ function normalizeResult(parsed = {}, meta = {}) {
         ? `ai-${String(meta.primaryModel).toLowerCase()}`
         : "ai-review";
 
+  const asset = normalizeAsset(parsed.asset);
+  const symbol = normalizeSymbol(parsed.symbol, asset);
+  const entryLow = normalizeNumber(parsed.entryLow);
+  const entryHigh = normalizeNumber(parsed.entryHigh);
+  const suggestedEntryPrice = pickFirstString(parsed.suggestedEntryPrice, parsed.entryPrice);
+  const normalizedEntryText = buildEntryText(parsed.entryText, entryLow, entryHigh, suggestedEntryPrice);
+  const direction = normalizeDirection(parsed.direction);
+  const hasFreshAction =
+    parsed.containsNewActionableInstruction === undefined
+      ? undefined
+      : Boolean(parsed.containsNewActionableInstruction);
+  const actionable =
+    hasFreshAction === false
+      ? false
+      : Boolean(parsed.actionable || ((asset || symbol) && direction));
+  const automationReady =
+    parsed.automationReady === undefined
+      ? actionable && Boolean(symbol) && Boolean(direction)
+      : Boolean(parsed.automationReady);
+
   return {
     parser,
     provider: meta.provider || "dashscope",
@@ -104,25 +202,24 @@ function normalizeResult(parsed = {}, meta = {}) {
     executionIntent: String(parsed.executionIntent || ""),
     messageType: String(parsed.messageType || ""),
     contentNature: String(parsed.contentNature || ""),
-    asset: String(parsed.asset || "").toUpperCase(),
-    symbol: String(parsed.symbol || "").replace("/", "_").toUpperCase(),
-    direction: normalizeDirection(parsed.direction),
+    asset,
+    symbol,
+    direction,
     directionLabel: String(parsed.directionLabel || ""),
-    entryText: String(parsed.entryText || ""),
-    entryLow: parsed.entryLow ?? null,
-    entryHigh: parsed.entryHigh ?? null,
-    stopLoss: parsed.stopLoss ?? null,
-    takeProfits: normalizeArray(parsed.takeProfits),
-    leverage: String(parsed.leverage || ""),
+    entryText: normalizedEntryText,
+    entryLow,
+    entryHigh,
+    stopLoss: normalizeNumber(parsed.stopLoss),
+    takeProfits: normalizeTakeProfitValues(parsed.takeProfits),
+    leverage: normalizeLeverage(parsed.leverage),
     orderType: normalizeOrderType(parsed.orderType),
-    suggestedEntryPrice: pickFirstString(parsed.suggestedEntryPrice, parsed.entryPrice),
+    suggestedEntryPrice,
     suggestedMarginQuote: pickFirstString(parsed.suggestedMarginQuote, parsed.marginQuote),
     suggestedContracts: pickFirstString(parsed.suggestedContracts, parsed.contracts, parsed.size),
     timeframe: String(parsed.timeframe || ""),
     confidence: String(parsed.confidence || ""),
-    actionable: Boolean(parsed.actionable),
-    automationReady:
-      parsed.automationReady === undefined ? undefined : Boolean(parsed.automationReady),
+    actionable,
+    automationReady,
     automationComment: String(parsed.automationComment || ""),
     complianceComment: String(parsed.complianceComment || ""),
     riskFlags: normalizeArray(parsed.riskFlags),
@@ -135,12 +232,12 @@ function buildPrimaryMessages(signal) {
     {
       role: "system",
       content:
-        "You are a trading-signal semantic analysis assistant. First understand what the analyst actually means, then convert that meaning into strict JSON only. Do not add explanations. Do not invent missing facts. The latest message is always the highest priority, but you may use recent context when the analyst sends a strategy in multiple consecutive parts. First decide whether the message is a forward-looking trading instruction, a market analysis, a watchlist note, or a retrospective recap / brag / performance review. Retrospective content such as reviewing past calls, celebrating profits, showing off win rate, or saying 'I told you so' must NOT be treated as a new executable strategy unless the text also contains a new forward-looking instruction with asset, direction, and intended action. messageType must be one of strategy, analysis, review, boast, watchlist, brief. contentNature must be one of forward_strategy, market_commentary, retrospective_review, performance_brag, risk_notice, unclear. direction must be buy, sell, or an empty string. orderType must be market, limit, or an empty string. semanticSummary should be a short Chinese summary of the real intent. executionIntent should be one of enter, scale_in, reduce, exit, wait, hedge, cancel, protect, unclear.",
+        "You are a senior analyst assistant for crypto and macro trading. Your job is to read analyst messages exactly like a careful trading desk assistant: first judge what the analyst really means, then extract strict structured fields. You must separate three things clearly: 1) a new forward-looking trade strategy, 2) ordinary market analysis or commentary, 3) retrospective recap / brag / past-performance review. Retrospective content such as reviewing past calls, celebrating profits, saying 'I told you so', showing gains, or recording previous trades must NOT be treated as a new executable strategy unless the latest message also contains a fresh future-facing action with clear asset, direction, and intended execution. Always prefer the latest message as the source of truth, but use recent context when the analyst sends a strategy in several consecutive parts. Return strict JSON only. Do not add prose. Do not invent facts. Extract the asset carefully. Examples: 比特币 -> BTC, 以太/以太坊 -> ETH, 黄金 -> XAU. symbol should use the format BTC_USDT when appropriate. entryLow/entryHigh/stopLoss/takeProfits must contain the actual key price levels whenever the analyst gave them explicitly or implicitly. messageType must be one of strategy, analysis, review, boast, watchlist, brief. contentNature must be one of forward_strategy, market_commentary, retrospective_review, performance_brag, risk_notice, unclear. direction must be buy, sell, or an empty string. orderType must be market, limit, or an empty string. semanticSummary should be a short Chinese summary of the real intent. executionIntent should be one of enter, scale_in, reduce, exit, wait, hedge, cancel, protect, unclear.",
     },
     {
       role: "user",
       content: JSON.stringify({
-        task: "Understand the analyst message semantically and extract structured trading fields from the text. If the message is only one segment of a longer strategy, use the recent context as background, but keep the latest message as the final source of truth.",
+        task: "Act like the analyst's desk assistant. First decide whether the latest message is a new actionable strategy, a normal analysis, or a retrospective brag/review. Then extract structured trading fields only if they truly exist. Be strict about asset, symbol, entry, stop loss, take profit, leverage, and order type. If the analyst gave a price range, fill entryLow and entryHigh. If the analyst gave a single key entry price, fill suggestedEntryPrice and entryText. If the analyst is only reviewing past performance, set actionable to false and do not fabricate a new trade.",
         expectedFields: [
           "semanticSummary",
           "executionIntent",
@@ -164,6 +261,8 @@ function buildPrimaryMessages(signal) {
           "confidence",
           "actionable",
           "containsNewActionableInstruction",
+          "automationReady",
+          "automationComment",
           "complianceComment",
           "riskFlags",
         ],
@@ -181,7 +280,7 @@ function buildReviewMessages(signal, extracted) {
     {
       role: "system",
       content:
-        "You are a trading-risk review assistant. Re-check the extracted result against the original analyst text and any recent context, then return strict JSON only. Focus on whether the semantic meaning was understood correctly, whether the fields are reasonable, and whether the message is actually a new trade instruction or only a retrospective recap / brag / review. executionIntent may also be cancel or protect when the analyst is managing an existing order. automationReady should be true only when the asset, direction, and execution intent are all sufficiently clear, and the message is a genuine forward-looking trade instruction rather than a past-performance recap.",
+        "You are a trading-risk review assistant and senior analyst QA reviewer. Re-check the extracted result against the original analyst text and any recent context, then return strict JSON only. Your first job is to verify whether this is truly a new trade instruction or merely market commentary / retrospective review / bragging. Your second job is to verify that the extracted asset, direction, entry, stop loss, take profits, leverage, and order type are grounded in the text. executionIntent may also be cancel or protect when the analyst is managing an existing order. automationReady should be true only when the asset, direction, and execution intent are all sufficiently clear, and the message is a genuine forward-looking trade instruction rather than a past-performance recap.",
     },
     {
       role: "user",
