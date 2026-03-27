@@ -180,6 +180,9 @@ function normalizeResult(parsed = {}, meta = {}) {
   const suggestedEntryPrice = pickFirstString(parsed.suggestedEntryPrice, parsed.entryPrice);
   const normalizedEntryText = buildEntryText(parsed.entryText, entryLow, entryHigh, suggestedEntryPrice);
   const direction = normalizeDirection(parsed.direction);
+  const messageType = String(parsed.messageType || "").trim().toLowerCase();
+  const contentNature = String(parsed.contentNature || "").trim().toLowerCase();
+  const executionIntent = String(parsed.executionIntent || "").trim().toLowerCase();
   const hasFreshAction =
     parsed.containsNewActionableInstruction === undefined
       ? undefined
@@ -192,6 +195,30 @@ function normalizeResult(parsed = {}, meta = {}) {
     parsed.automationReady === undefined
       ? actionable && Boolean(symbol) && Boolean(direction)
       : Boolean(parsed.automationReady);
+  const instructionType =
+    String(parsed.instructionType || "").trim().toLowerCase() ||
+    (["review", "boast"].includes(messageType)
+      ? "review_only"
+      : executionIntent === "cancel"
+        ? "cancel"
+        : executionIntent === "protect"
+          ? "protect"
+          : executionIntent === "reduce"
+            ? "reduce"
+            : executionIntent === "exit"
+              ? "exit"
+              : actionable
+                ? "open"
+                : messageType === "analysis"
+                  ? "analysis_only"
+                  : "");
+  const rejectionReason =
+    String(parsed.rejectionReason || "").trim() ||
+    (hasFreshAction === false
+      ? "no_new_actionable_instruction"
+      : ["review", "boast"].includes(messageType)
+        ? "retrospective_or_bragging_without_new_instruction"
+        : "");
 
   return {
     parser,
@@ -199,9 +226,10 @@ function normalizeResult(parsed = {}, meta = {}) {
     primaryModel: meta.primaryModel || "",
     reviewModel: meta.reviewEnabled ? meta.reviewModel || "" : "",
     semanticSummary: String(parsed.semanticSummary || parsed.intentSummary || ""),
-    executionIntent: String(parsed.executionIntent || ""),
-    messageType: String(parsed.messageType || ""),
-    contentNature: String(parsed.contentNature || ""),
+    instructionType,
+    executionIntent,
+    messageType,
+    contentNature,
     asset,
     symbol,
     direction,
@@ -209,6 +237,7 @@ function normalizeResult(parsed = {}, meta = {}) {
     entryText: normalizedEntryText,
     entryLow,
     entryHigh,
+    stopLossRaw: String(parsed.stopLossRaw || ""),
     stopLoss: normalizeNumber(parsed.stopLoss),
     takeProfits: normalizeTakeProfitValues(parsed.takeProfits),
     leverage: normalizeLeverage(parsed.leverage),
@@ -218,9 +247,11 @@ function normalizeResult(parsed = {}, meta = {}) {
     suggestedContracts: pickFirstString(parsed.suggestedContracts, parsed.contracts, parsed.size),
     timeframe: String(parsed.timeframe || ""),
     confidence: String(parsed.confidence || ""),
+    containsNewActionableInstruction: hasFreshAction,
     actionable,
     automationReady,
     automationComment: String(parsed.automationComment || ""),
+    rejectionReason,
     complianceComment: String(parsed.complianceComment || ""),
     riskFlags: normalizeArray(parsed.riskFlags),
   };
@@ -232,7 +263,7 @@ function buildPrimaryMessages(signal) {
     {
       role: "system",
       content:
-        "You are a senior analyst assistant for crypto and macro trading. Your job is to read analyst messages exactly like a careful trading desk assistant: first judge what the analyst really means, then extract strict structured fields. You must separate three things clearly: 1) a new forward-looking trade strategy, 2) ordinary market analysis or commentary, 3) retrospective recap / brag / past-performance review. Retrospective content such as reviewing past calls, celebrating profits, saying 'I told you so', showing gains, or recording previous trades must NOT be treated as a new executable strategy unless the latest message also contains a fresh future-facing action with clear asset, direction, and intended execution. Always prefer the latest message as the source of truth, but use recent context when the analyst sends a strategy in several consecutive parts. Return strict JSON only. Do not add prose. Do not invent facts. Extract the asset carefully. Examples: 比特币 -> BTC, 以太/以太坊 -> ETH, 黄金 -> XAU. symbol should use the format BTC_USDT when appropriate. entryLow/entryHigh/stopLoss/takeProfits must contain the actual key price levels whenever the analyst gave them explicitly or implicitly. messageType must be one of strategy, analysis, review, boast, watchlist, brief. contentNature must be one of forward_strategy, market_commentary, retrospective_review, performance_brag, risk_notice, unclear. direction must be buy, sell, or an empty string. orderType must be market, limit, or an empty string. semanticSummary should be a short Chinese summary of the real intent. executionIntent should be one of enter, scale_in, reduce, exit, wait, hedge, cancel, protect, unclear.",
+        "You are a senior analyst assistant for crypto and macro trading. Your job is to read analyst messages exactly like a careful trading desk assistant: first judge what the analyst really means, then extract strict structured fields. You must separate three things clearly: 1) a new forward-looking trade strategy, 2) ordinary market analysis or commentary, 3) retrospective recap / brag / past-performance review. Retrospective content such as reviewing past calls, celebrating profits, saying 'I told you so', showing gains, or recording previous trades must NOT be treated as a new executable strategy unless the latest message also contains a fresh future-facing action with clear asset, direction, and intended execution. Always prefer the latest message as the source of truth, but use recent context when the analyst sends a strategy in several consecutive parts. Return strict JSON only. Do not add prose. Do not invent facts. Extract the asset carefully. Examples: 比特币 -> BTC, 以太/以太坊 -> ETH, 黄金 -> XAU. symbol should use the format BTC_USDT when appropriate. entryLow/entryHigh/stopLoss/takeProfits must contain the actual key price levels whenever the analyst gave them explicitly or implicitly. instructionType must be one of open, reduce, exit, cancel, protect, analysis_only, review_only. messageType must be one of strategy, analysis, review, boast, watchlist, brief. contentNature must be one of forward_strategy, market_commentary, retrospective_review, performance_brag, risk_notice, unclear. direction must be buy, sell, or an empty string. orderType must be market, limit, or an empty string. semanticSummary should be a short Chinese summary of the real intent. executionIntent should be one of enter, scale_in, reduce, exit, wait, hedge, cancel, protect, unclear. If the text is not a fresh executable instruction, set actionable=false, containsNewActionableInstruction=false, and provide rejectionReason.",
     },
     {
       role: "user",
@@ -240,6 +271,7 @@ function buildPrimaryMessages(signal) {
         task: "Act like the analyst's desk assistant. First decide whether the latest message is a new actionable strategy, a normal analysis, or a retrospective brag/review. Then extract structured trading fields only if they truly exist. Be strict about asset, symbol, entry, stop loss, take profit, leverage, and order type. If the analyst gave a price range, fill entryLow and entryHigh. If the analyst gave a single key entry price, fill suggestedEntryPrice and entryText. If the analyst is only reviewing past performance, set actionable to false and do not fabricate a new trade.",
         expectedFields: [
           "semanticSummary",
+          "instructionType",
           "executionIntent",
           "messageType",
           "contentNature",
@@ -250,6 +282,7 @@ function buildPrimaryMessages(signal) {
           "entryText",
           "entryLow",
           "entryHigh",
+          "stopLossRaw",
           "stopLoss",
           "takeProfits",
           "leverage",
@@ -263,6 +296,7 @@ function buildPrimaryMessages(signal) {
           "containsNewActionableInstruction",
           "automationReady",
           "automationComment",
+          "rejectionReason",
           "complianceComment",
           "riskFlags",
         ],
@@ -280,7 +314,7 @@ function buildReviewMessages(signal, extracted) {
     {
       role: "system",
       content:
-        "You are a trading-risk review assistant and senior analyst QA reviewer. Re-check the extracted result against the original analyst text and any recent context, then return strict JSON only. Your first job is to verify whether this is truly a new trade instruction or merely market commentary / retrospective review / bragging. Your second job is to verify that the extracted asset, direction, entry, stop loss, take profits, leverage, and order type are grounded in the text. executionIntent may also be cancel or protect when the analyst is managing an existing order. automationReady should be true only when the asset, direction, and execution intent are all sufficiently clear, and the message is a genuine forward-looking trade instruction rather than a past-performance recap.",
+        "You are a trading-risk review assistant and senior analyst QA reviewer. Re-check the extracted result against the original analyst text and any recent context, then return strict JSON only. Your first job is to verify whether this is truly a new trade instruction or merely market commentary / retrospective review / bragging. Your second job is to verify that the extracted asset, direction, entry, stop loss, take profits, leverage, and order type are grounded in the text. executionIntent may also be cancel or protect when the analyst is managing an existing order. instructionType should reflect the operational category open, reduce, exit, cancel, protect, analysis_only, or review_only. automationReady should be true only when the asset, direction, and execution intent are all sufficiently clear, and the message is a genuine forward-looking trade instruction rather than a past-performance recap.",
     },
     {
       role: "user",
@@ -288,6 +322,7 @@ function buildReviewMessages(signal, extracted) {
         task: "Review and correct the structured analyst output.",
         expectedFields: [
           "semanticSummary",
+          "instructionType",
           "executionIntent",
           "messageType",
           "contentNature",
@@ -298,6 +333,7 @@ function buildReviewMessages(signal, extracted) {
           "entryText",
           "entryLow",
           "entryHigh",
+          "stopLossRaw",
           "stopLoss",
           "takeProfits",
           "leverage",
@@ -311,6 +347,7 @@ function buildReviewMessages(signal, extracted) {
           "automationReady",
           "containsNewActionableInstruction",
           "automationComment",
+          "rejectionReason",
           "complianceComment",
           "riskFlags",
         ],

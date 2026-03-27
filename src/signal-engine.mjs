@@ -930,6 +930,9 @@ function buildStructuredSummarySafe(analysis) {
   if (analysis.executionIntent) {
     lines.push(`执行意图：${analysis.executionIntent}`);
   }
+  if (analysis.instructionType) {
+    lines.push(`操作类型：${analysis.instructionType}`);
+  }
   if (analysis.contentNature) {
     lines.push(`内容性质：${analysis.contentNature}`);
   }
@@ -952,6 +955,9 @@ function buildStructuredSummarySafe(analysis) {
   }
   if (analysis.complianceComment) {
     lines.push(`AI 复核备注：${analysis.complianceComment}`);
+  }
+  if (analysis.rejectionReason) {
+    lines.push(`拒绝原因：${analysis.rejectionReason}`);
   }
   if (analysis.riskFlags?.length) {
     lines.push(`风险提示：${analysis.riskFlags.join("；")}`);
@@ -1544,6 +1550,7 @@ export function applyAiAnalysis(signal, aiAnalysis) {
     primaryModel: aiAnalysis.primaryModel || signal.analysis.primaryModel,
     reviewModel: aiAnalysis.reviewModel || signal.analysis.reviewModel,
     semanticSummary: aiAnalysis.semanticSummary || signal.analysis.semanticSummary || "",
+    instructionType: aiAnalysis.instructionType || signal.analysis.instructionType || "",
     executionIntent: aiAnalysis.executionIntent || signal.analysis.executionIntent || "",
     messageType: aiAnalysis.messageType || signal.analysis.messageType,
     contentNature: aiAnalysis.contentNature || signal.analysis.contentNature || "",
@@ -1554,6 +1561,7 @@ export function applyAiAnalysis(signal, aiAnalysis) {
     entryText: aiAnalysis.entryText || signal.analysis.entryText,
     entryLow: aiAnalysis.entryLow ?? signal.analysis.entryLow,
     entryHigh: aiAnalysis.entryHigh ?? signal.analysis.entryHigh,
+    stopLossRaw: aiAnalysis.stopLossRaw || signal.analysis.stopLossRaw || "",
     stopLoss: aiAnalysis.stopLoss ?? signal.analysis.stopLoss,
     takeProfits:
       Array.isArray(aiAnalysis.takeProfits) && aiAnalysis.takeProfits.length
@@ -1566,6 +1574,10 @@ export function applyAiAnalysis(signal, aiAnalysis) {
     suggestedContracts: aiAnalysis.suggestedContracts || signal.analysis.suggestedContracts,
     timeframe: aiAnalysis.timeframe || signal.analysis.timeframe,
     confidence: aiAnalysis.confidence || signal.analysis.confidence,
+    containsNewActionableInstruction:
+      aiAnalysis.containsNewActionableInstruction ??
+      signal.analysis.containsNewActionableInstruction ??
+      undefined,
     threadAggregationNote:
       signal.threadAggregationNote || signal.analysis.threadAggregationNote || "",
     actionable: Boolean(
@@ -1577,15 +1589,18 @@ export function applyAiAnalysis(signal, aiAnalysis) {
       aiAnalysis.automationReady ?? signal.analysis.automationReady ?? undefined,
     automationComment:
       aiAnalysis.automationComment || signal.analysis.automationComment || "",
+    rejectionReason: aiAnalysis.rejectionReason || signal.analysis.rejectionReason || "",
     complianceComment: aiAnalysis.complianceComment || signal.analysis.complianceComment || "",
     riskFlags: unique([...(signal.analysis.riskFlags || []), ...(aiAnalysis.riskFlags || [])]),
   };
 
   const retrospectiveCheck = classifyRetrospectiveSignal(signal.text, nextAnalysis);
   if (retrospectiveCheck.retrospectiveOnly) {
+    nextAnalysis.instructionType = "review_only";
     nextAnalysis.messageType = nextAnalysis.messageType === "boast" ? "boast" : "review";
     nextAnalysis.contentNature =
       nextAnalysis.messageType === "boast" ? "performance_brag" : "retrospective_review";
+    nextAnalysis.containsNewActionableInstruction = false;
     nextAnalysis.actionable = false;
     nextAnalysis.automationReady = false;
     nextAnalysis.executionIntent = "wait";
@@ -1604,6 +1619,7 @@ export function applyAiAnalysis(signal, aiAnalysis) {
     nextAnalysis.suggestedContracts = "";
     nextAnalysis.automationComment =
       "AI 判断这条内容主要是在回顾过往战绩或炫耀结果，不是新的前瞻性交易指令。";
+    nextAnalysis.rejectionReason = "retrospective_or_bragging_without_new_instruction";
     nextAnalysis.complianceComment =
       "已降级为回顾类内容，只做转发与留档，不生成可执行跟单建议。";
     nextAnalysis.riskFlags = unique([
@@ -1682,12 +1698,20 @@ function hasBlockingAiRiskFlags(analysis) {
 export function isAnalystAiTradeCandidate(signal) {
   const analysis = signal?.analysis || {};
   const tradeIdea = signal?.tradeIdea || {};
+  const instructionType = String(analysis.instructionType || "").toLowerCase();
   const messageType = String(analysis.messageType || "").toLowerCase();
   const contentNature = String(analysis.contentNature || "").toLowerCase();
   const executionIntent = String(analysis.executionIntent || "").toLowerCase();
+  const hasFreshAction = analysis.containsNewActionableInstruction;
   const semanticTradeIntent = ["enter", "scale_in", "reduce", "exit", "hedge"].includes(
     executionIntent,
   );
+  if (["analysis_only", "review_only", "cancel", "protect"].includes(instructionType)) {
+    return false;
+  }
+  if (hasFreshAction === false) {
+    return false;
+  }
   if (["review", "boast"].includes(messageType)) {
     return false;
   }
