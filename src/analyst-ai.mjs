@@ -165,6 +165,10 @@ function mergeObjects(primary = {}, review = {}) {
   };
 }
 
+function normalizeStageResult(input = {}) {
+  return input && typeof input === "object" ? input : {};
+}
+
 function normalizeResult(parsed = {}, meta = {}) {
   const parser =
     meta.reviewModel && meta.reviewEnabled
@@ -308,6 +312,79 @@ function buildPrimaryMessages(signal) {
   ];
 }
 
+function buildSemanticMessages(signal) {
+  const recentContext = Array.isArray(signal.contextMessages) ? signal.contextMessages : [];
+  return [
+    {
+      role: "system",
+      content:
+        "You are a senior analyst assistant for crypto and macro trading. Stage 1: semantic interpretation only. Decide what the analyst means before extracting execution parameters. Separate: (a) fresh forward-looking trade instruction, (b) ordinary market analysis/commentary, (c) retrospective recap/brag/past-performance review. Retrospective content must not be treated as a new instruction unless the latest message clearly adds a new future-facing action. Return strict JSON only.",
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        task: "Stage 1 semantic judgement only. Do not force numeric extraction in this stage.",
+        expectedFields: [
+          "semanticSummary",
+          "instructionType",
+          "executionIntent",
+          "messageType",
+          "contentNature",
+          "containsNewActionableInstruction",
+          "actionable",
+          "automationReady",
+          "automationComment",
+          "rejectionReason",
+          "timeframe",
+          "confidence",
+          "riskFlags",
+        ],
+        text: signal.text,
+        recentContext,
+        combinedContextText: signal.contextText || signal.text,
+      }),
+    },
+  ];
+}
+
+function buildStructuringMessages(signal, semantic = {}) {
+  const recentContext = Array.isArray(signal.contextMessages) ? signal.contextMessages : [];
+  return [
+    {
+      role: "system",
+      content:
+        "You are a senior analyst assistant for crypto and macro trading. Stage 2: structured extraction only. Extract concrete fields strictly from explicit statements in text/context. No fabrication. If a field is missing, leave it empty/null. Use semantic judgement as guidance, but never override with guesses.",
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        task: "Stage 2 structured extraction. Focus on asset/symbol/direction/entry/stop loss/take profits/leverage/order type.",
+        semanticInput: semantic,
+        expectedFields: [
+          "asset",
+          "symbol",
+          "direction",
+          "directionLabel",
+          "entryText",
+          "entryLow",
+          "entryHigh",
+          "stopLossRaw",
+          "stopLoss",
+          "takeProfits",
+          "leverage",
+          "orderType",
+          "suggestedEntryPrice",
+          "suggestedMarginQuote",
+          "suggestedContracts",
+        ],
+        text: signal.text,
+        recentContext,
+        combinedContextText: signal.contextText || signal.text,
+      }),
+    },
+  ];
+}
+
 function buildReviewMessages(signal, extracted) {
   const recentContext = Array.isArray(signal.contextMessages) ? signal.contextMessages : [];
   return [
@@ -372,6 +449,10 @@ export class AnalystAiReviewer {
     this.timeoutMs = Number(config.timeoutMs || 30000);
     this.primaryTimeoutMs = Number(config.primaryTimeoutMs || Math.min(this.timeoutMs, 12000));
     this.reviewTimeoutMs = Number(config.reviewTimeoutMs || Math.min(this.timeoutMs, 8000));
+    this.semanticTimeoutMs = Number(config.semanticTimeoutMs || Math.min(this.timeoutMs, 10000));
+    this.structuringTimeoutMs = Number(
+      config.structuringTimeoutMs || Math.min(this.timeoutMs, 12000),
+    );
   }
 
   isConfigured() {
@@ -425,11 +506,21 @@ export class AnalystAiReviewer {
     }
 
     try {
-      const primaryRaw = await this.callModelWithTimeout(
-        this.primaryModel,
-        buildPrimaryMessages(signal),
-        this.primaryTimeoutMs,
+      const semanticRaw = normalizeStageResult(
+        await this.callModelWithTimeout(
+          this.primaryModel,
+          buildSemanticMessages(signal),
+          this.semanticTimeoutMs,
+        ),
       );
+      const structRaw = normalizeStageResult(
+        await this.callModelWithTimeout(
+          this.primaryModel,
+          buildStructuringMessages(signal, semanticRaw),
+          this.structuringTimeoutMs,
+        ),
+      );
+      const primaryRaw = mergeObjects(semanticRaw, structRaw);
       const meta = {
         provider: this.provider,
         primaryModel: this.primaryModel,
@@ -454,7 +545,7 @@ export class AnalystAiReviewer {
           ...meta,
           reviewEnabled: false,
         });
-        fallback.parser = `ai-${String(this.primaryModel).toLowerCase()}-fallback`;
+        fallback.parser = `ai-${String(this.primaryModel).toLowerCase()}-two-stage-fallback`;
         fallback.reviewModel = this.reviewModel;
         fallback.automationReady = false;
         fallback.complianceComment = `AI review fallback: second-pass model failed (${buildAiErrorMessage(reviewError)}). Using primary extraction only.`;
