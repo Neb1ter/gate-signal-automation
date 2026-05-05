@@ -43,7 +43,7 @@ const telegramRuntime = {
   identity: "",
   lastError: "",
 };
-const APP_BUILD = "forward-only-media-v1";
+const APP_BUILD = "forward-only-media-v2";
 const safeConfiguredChatLabels = {
   "-1003758464445": "Get8.Pro",
   "-1003720685651": "Get8.Pro_News",

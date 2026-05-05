@@ -11,6 +11,23 @@ function normalizeText(text) {
     .toLowerCase();
 }
 
+function normalizeMediaFingerprint(media = []) {
+  return (Array.isArray(media) ? media : [])
+    .map((item) =>
+      [
+        item?.type,
+        item?.telegramFileUniqueId,
+        item?.telegramFileId,
+        item?.fileName,
+        item?.publicUrl,
+      ]
+        .filter(Boolean)
+        .join(":"),
+    )
+    .filter(Boolean)
+    .join(" ");
+}
+
 function hashText(text) {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
@@ -1376,7 +1393,9 @@ export function createSignalFromPayload(payload) {
 }
 
 export function evaluateSignal(baseSignal, playbooks, config, store) {
-  const normalized = normalizeText(baseSignal.text);
+  const normalized = [normalizeText(baseSignal.text), normalizeMediaFingerprint(baseSignal.media)]
+    .filter(Boolean)
+    .join(" ");
   const normalizedHash = hashText(normalized);
   const presentation = buildSignalPresentation(baseSignal);
   const duplicate = store.findRecentDuplicate(normalizedHash, config.dedupWindowSec);
@@ -1500,6 +1519,7 @@ export function evaluateSignal(baseSignal, playbooks, config, store) {
       publishedAt: baseSignal.publishedAt,
       text: baseSignal.text,
       displayText: presentation.displayText,
+      media: Array.isArray(baseSignal.media) ? baseSignal.media : [],
       score,
       matchedPlaybookIds: matched.map((playbook) => playbook.id),
       selectedPlaybookId: selectedPlaybook?.id || "",
