@@ -39,7 +39,7 @@ const telegramRuntime = {
   identity: "",
   lastError: "",
 };
-const APP_BUILD = "analyst-general-signal-routing-v1";
+const APP_BUILD = "forward-only-text-v1";
 const safeConfiguredChatLabels = {
   "-1003758464445": "Get8.Pro",
   "-1003720685651": "Get8.Pro_News",
