@@ -77,8 +77,34 @@ function normalizeNumber(value) {
   if (value === undefined || value === null || value === "") {
     return null;
   }
-  const numeric = Number.parseFloat(String(value).replaceAll(",", "").trim());
-  return Number.isFinite(numeric) ? numeric : null;
+  const normalized = String(value)
+    .toLowerCase()
+    .replace(/[,\s，]/g, "");
+  if (!normalized) {
+    return null;
+  }
+
+  const matched = normalized.match(/(-?\d+(?:\.\d+)?)(亿|万|千|k|m|b|w)?/i);
+  if (!matched) {
+    return null;
+  }
+  const base = Number.parseFloat(matched[1]);
+  if (!Number.isFinite(base)) {
+    return null;
+  }
+  const unit = String(matched[2] || "").toLowerCase();
+  const factorMap = {
+    "": 1,
+    "千": 1_000,
+    k: 1_000,
+    "万": 10_000,
+    w: 10_000,
+    m: 1_000_000,
+    b: 1_000_000_000,
+    "亿": 100_000_000,
+  };
+  const factor = factorMap[unit] ?? 1;
+  return base * factor;
 }
 
 function normalizeLeverage(value) {
@@ -91,8 +117,22 @@ function normalizeLeverage(value) {
 }
 
 function normalizeTakeProfitValues(value) {
-  return normalizeArray(value)
-    .map((item) => String(item).replaceAll(",", "").trim())
+  const source = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value
+          .replace(/[\[\]"]/g, "")
+          .split(/[,\s/|，；;]+/)
+          .filter(Boolean)
+      : [];
+  return source
+    .map((item) => {
+      const parsed = normalizeNumber(item);
+      if (parsed !== null) {
+        return String(parsed);
+      }
+      return String(item).replaceAll(",", "").trim();
+    })
     .filter(Boolean);
 }
 
@@ -111,6 +151,32 @@ function buildEntryText(entryText, entryLow, entryHigh, suggestedEntryPrice) {
     return String(entryHigh);
   }
   return String(suggestedEntryPrice || "").trim();
+}
+
+function deriveEntryRangeFromText(entryText, fallbackPrice = "") {
+  const raw = String(entryText || "").trim();
+  if (!raw) {
+    return { low: null, high: null };
+  }
+
+  const rangeMatch = raw.match(
+    /(-?\d+(?:\.\d+)?(?:亿|万|千|k|m|b|w)?)\s*(?:-|~|到|至|—|–)\s*(-?\d+(?:\.\d+)?(?:亿|万|千|k|m|b|w)?)/i,
+  );
+  if (rangeMatch) {
+    const a = normalizeNumber(rangeMatch[1]);
+    const b = normalizeNumber(rangeMatch[2]);
+    if (a !== null && b !== null) {
+      return { low: Math.min(a, b), high: Math.max(a, b) };
+    }
+  }
+
+  const single =
+    normalizeNumber(raw) ??
+    normalizeNumber(fallbackPrice);
+  if (single !== null) {
+    return { low: single, high: single };
+  }
+  return { low: null, high: null };
 }
 
 function normalizeDirection(value) {
@@ -182,11 +248,28 @@ function normalizeResult(parsed = {}, meta = {}) {
   const entryLow = normalizeNumber(parsed.entryLow);
   const entryHigh = normalizeNumber(parsed.entryHigh);
   const suggestedEntryPrice = pickFirstString(parsed.suggestedEntryPrice, parsed.entryPrice);
-  const normalizedEntryText = buildEntryText(parsed.entryText, entryLow, entryHigh, suggestedEntryPrice);
+  const suggestedEntryNumeric = normalizeNumber(suggestedEntryPrice);
+  const normalizedSuggestedEntryPrice =
+    suggestedEntryNumeric !== null
+      ? String(suggestedEntryNumeric)
+      : String(suggestedEntryPrice || "").trim();
+  const normalizedEntryText = buildEntryText(
+    parsed.entryText,
+    entryLow,
+    entryHigh,
+    normalizedSuggestedEntryPrice,
+  );
+  const entryFromText = deriveEntryRangeFromText(normalizedEntryText, normalizedSuggestedEntryPrice);
+  const finalEntryLow = entryLow ?? entryFromText.low;
+  const finalEntryHigh = entryHigh ?? entryFromText.high;
+  const parsedStopLoss = normalizeNumber(parsed.stopLoss);
+  const stopLossRaw = String(parsed.stopLossRaw || "");
+  const finalStopLoss = parsedStopLoss ?? normalizeNumber(stopLossRaw);
   const direction = normalizeDirection(parsed.direction);
   const messageType = String(parsed.messageType || "").trim().toLowerCase();
   const contentNature = String(parsed.contentNature || "").trim().toLowerCase();
   const executionIntent = String(parsed.executionIntent || "").trim().toLowerCase();
+  const semanticRewrite = String(parsed.semanticRewrite || parsed.normalizedIntentText || "");
   const hasFreshAction =
     parsed.containsNewActionableInstruction === undefined
       ? undefined
@@ -230,6 +313,7 @@ function normalizeResult(parsed = {}, meta = {}) {
     primaryModel: meta.primaryModel || "",
     reviewModel: meta.reviewEnabled ? meta.reviewModel || "" : "",
     semanticSummary: String(parsed.semanticSummary || parsed.intentSummary || ""),
+    semanticRewrite,
     instructionType,
     executionIntent,
     messageType,
@@ -239,14 +323,14 @@ function normalizeResult(parsed = {}, meta = {}) {
     direction,
     directionLabel: String(parsed.directionLabel || ""),
     entryText: normalizedEntryText,
-    entryLow,
-    entryHigh,
-    stopLossRaw: String(parsed.stopLossRaw || ""),
-    stopLoss: normalizeNumber(parsed.stopLoss),
+    entryLow: finalEntryLow,
+    entryHigh: finalEntryHigh,
+    stopLossRaw,
+    stopLoss: finalStopLoss,
     takeProfits: normalizeTakeProfitValues(parsed.takeProfits),
     leverage: normalizeLeverage(parsed.leverage),
     orderType: normalizeOrderType(parsed.orderType),
-    suggestedEntryPrice,
+    suggestedEntryPrice: normalizedSuggestedEntryPrice,
     suggestedMarginQuote: pickFirstString(parsed.suggestedMarginQuote, parsed.marginQuote),
     suggestedContracts: pickFirstString(parsed.suggestedContracts, parsed.contracts, parsed.size),
     timeframe: String(parsed.timeframe || ""),
@@ -326,6 +410,7 @@ function buildSemanticMessages(signal) {
         task: "Stage 1 semantic judgement only. Do not force numeric extraction in this stage.",
         expectedFields: [
           "semanticSummary",
+          "semanticRewrite",
           "instructionType",
           "executionIntent",
           "messageType",
@@ -353,7 +438,7 @@ function buildStructuringMessages(signal, semantic = {}) {
     {
       role: "system",
       content:
-        "You are a senior analyst assistant for crypto and macro trading. Stage 2: structured extraction only. Extract concrete fields strictly from explicit statements in text/context. No fabrication. If a field is missing, leave it empty/null. Use semantic judgement as guidance, but never override with guesses.",
+        "You are a senior analyst assistant for crypto and macro trading. Stage 2: structured extraction only. Extract concrete fields strictly from explicit statements in text/context. No fabrication. If a field is missing, leave it empty/null. Use semantic judgement as guidance, but never override with guesses. Convert colloquial price expressions into normalized numeric values when the meaning is clear, for example: 8万 -> 80000, 7.2w -> 72000, 80k -> 80000.",
     },
     {
       role: "user",

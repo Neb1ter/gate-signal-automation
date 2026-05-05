@@ -108,6 +108,7 @@ const defaultRuntimeSettings = {
   execution: {
     newsMode: "auto",
     analystMode: "manual",
+    forwardOnlyMode: true,
   },
   ai: {
     enabled: config.ai.enabled,
@@ -129,6 +130,10 @@ const defaultRuntimeSettings = {
 
 function getRuntimeSettings() {
   return store.getRuntimeSettings(defaultRuntimeSettings);
+}
+
+function isForwardOnlyMode(runtimeSettings = getRuntimeSettings()) {
+  return true;
 }
 
 function createAiReviewer(runtimeSettings = getRuntimeSettings()) {
@@ -208,19 +213,23 @@ function getTelegramMessage(update) {
 }
 
 function getSignalDeliveryOptionsSafe(signal) {
+  const runtimeSettings = getRuntimeSettings();
   if (signal.sourceType !== "analyst") {
     const cleanName = coerceCleanChineseText(signal.sourceName, signal.sourceName || "信号来源");
     return {
       webhookUrl: "",
       displayName: cleanName,
       routeLabel: cleanName,
+      forwardOnlyMode: isForwardOnlyMode(runtimeSettings),
+      topicStyle: false,
     };
   }
 
   const route = getAnalystRoute(signal.chatId);
   const routeLabel =
-    getConfiguredChatLabel(signal.chatId) ||
+    coerceCleanChineseText(route?.displayName, "") ||
     coerceCleanChineseText(signal.sourceName, "") ||
+    getConfiguredChatLabel(signal.chatId) ||
     signal.chatId ||
     "分析师群";
 
@@ -235,6 +244,8 @@ function getSignalDeliveryOptionsSafe(signal) {
       buildAnalystRouteDisplayName(signal.chatId, routeLabel) ||
       buildAnalystPrivacyAlias(signal.chatId),
     routeLabel,
+    forwardOnlyMode: isForwardOnlyMode(runtimeSettings),
+    topicStyle: true,
   };
 }
 
@@ -251,12 +262,14 @@ function isAnalystSignalClearForBroadcast(signal) {
   );
 }
 
-function getGeneralAnalystSignalDeliveryOptions(signal) {
+function getGeneralAnalystSignalDeliveryOptions(signal, runtimeSettings = getRuntimeSettings()) {
+  if (isForwardOnlyMode(runtimeSettings)) {
+    return null;
+  }
   if (!isAnalystSignalClearForBroadcast(signal)) {
     return null;
   }
 
-  const runtimeSettings = getRuntimeSettings();
   const webhookUrl = String(
     runtimeSettings.feishu?.generalAnalystSignalWebhookUrl || config.feishu.webhookUrl || "",
   ).trim();
@@ -269,6 +282,8 @@ function getGeneralAnalystSignalDeliveryOptions(signal) {
     ...primary,
     webhookUrl,
     routeLabel: "分析师交易信号",
+    forwardOnlyMode: false,
+    topicStyle: true,
   };
 }
 
@@ -290,8 +305,9 @@ function dedupeDeliveryTargets(targets) {
 }
 
 function getSignalDeliveryTargets(signal) {
+  const runtimeSettings = getRuntimeSettings();
   const targets = [getSignalDeliveryOptionsSafe(signal)];
-  const generalTarget = getGeneralAnalystSignalDeliveryOptions(signal);
+  const generalTarget = getGeneralAnalystSignalDeliveryOptions(signal, runtimeSettings);
   if (generalTarget) {
     targets.push(generalTarget);
   }
@@ -299,11 +315,12 @@ function getSignalDeliveryTargets(signal) {
 }
 
 function getExecutionResultDeliveryTargets(signal, trigger) {
+  const runtimeSettings = getRuntimeSettings();
   const primaryTarget = getSignalDeliveryOptionsSafe(signal);
   const targets = [primaryTarget];
-  const analystMode = getAnalystExecutionMode();
+  const analystMode = getAnalystExecutionMode(runtimeSettings);
   if (signal?.sourceType === "analyst" && trigger === "auto" && analystMode === "auto") {
-    const generalTarget = getGeneralAnalystSignalDeliveryOptions(signal);
+    const generalTarget = getGeneralAnalystSignalDeliveryOptions(signal, runtimeSettings);
     if (generalTarget) {
       targets.push(generalTarget);
     }
@@ -777,7 +794,7 @@ function renderLoginPage(nextPath = "/admin", errorMessage = "") {
     <div class="wrap">
       <form class="card" method="post" action="/login">
         <h1>云端管理登录</h1>
-        <p>这是你的交易信号后台。登录后可以管理 Telegram 监听群、切换新闻自动或手动交易模式，并查看待决策信号。</p>
+        <p>这是你的交易信号后台。登录后可以管理 Telegram 监听群、切换系统模式，并查看转发与信号状态。</p>
         ${errorBlock}
         <input type="hidden" name="next" value="${escapeHtml(safeNext)}" />
         <label for="password">管理口令</label>
@@ -904,6 +921,37 @@ function renderPendingQueuePage(pendingSignals) {
 </html>`;
 }
 
+function applyForwardOnlyMode(signal, runtimeSettings = getRuntimeSettings()) {
+  if (!signal) {
+    return signal;
+  }
+
+  signal.tradeIdea = null;
+  signal.managementIntent = "";
+  signal.executionResult = null;
+  signal.executionStatus = "notify_only";
+  signal.executionReason =
+    signal.sourceType === "analyst"
+      ? "纯转发模式：只做去噪转发"
+      : "纯转发模式：只做消息转发";
+
+  if (signal.analysis) {
+    signal.analysis.semanticSummary = "";
+    signal.analysis.semanticRewrite = "";
+    signal.analysis.executionIntent = "";
+    signal.analysis.instructionType = "";
+    signal.analysis.automationReady = false;
+    signal.analysis.automationComment = "";
+    signal.analysis.rejectionReason = "";
+    signal.analysis.complianceComment = "";
+    signal.analysis.normalizedSummary = "";
+    signal.analysis.riskFlags = [];
+  }
+
+  signal.processingMode = isForwardOnlyMode(runtimeSettings) ? "forward_only" : "standard";
+  return signal;
+}
+
 async function notifySignal(signal) {
   const approvalToken = signApprovalToken(signal.id);
   const deliveryTargets = getSignalDeliveryTargets(signal);
@@ -1013,7 +1061,9 @@ async function finalizeSignalProcessing(signalId) {
   store.upsertSignal(signal);
 
   const runtimeSettings = getRuntimeSettings();
-  if (signal.sourceType === "analyst") {
+  if (isForwardOnlyMode(runtimeSettings)) {
+    applyForwardOnlyMode(signal, runtimeSettings);
+  } else if (signal.sourceType === "analyst") {
     const aiAnalysis = await createAiReviewer(runtimeSettings).review(signal);
     if (aiAnalysis) {
       applyAiAnalysis(signal, aiAnalysis);
@@ -1412,7 +1462,7 @@ function buildAnalystThreadContext(baseSignal, message) {
     baseSignal.contextText = [
       ...candidateThread.slice(0, -1).map(
         (item, index) =>
-          `上一段 ${index + 1}（${String(item.publishedAt || "").replace("T", " ").replace("Z", " UTC")}）:\n${item.text}`,
+          `上一段 ${index + 1}：${String(item.publishedAt || "").replace("T", " ").replace("Z", " UTC")}\n${item.text}`,
       ),
       `最新消息：\n${baseSignal.text}`,
     ].join("\n\n");
@@ -1461,9 +1511,9 @@ async function processTelegramMessage(message) {
       baseSignal.contextText = [
         ...recentContext.map(
           (item, index) =>
-            `上一段 ${index + 1}（${String(item.publishedAt || "").replace("T", " ").replace("Z", " UTC")}）:\n${item.text}`,
+            `上一段 ${index + 1}：${String(item.publishedAt || "").replace("T", " ").replace("Z", " UTC")}\n${item.text}`,
         ),
-        `最新消息:\n${baseSignal.text}`,
+        `最新消息：\n${baseSignal.text}`,
       ].join("\n\n");
     }
 
@@ -1549,7 +1599,7 @@ async function startTelegramUserStream() {
     telegramRuntime.ready = false;
     telegramRuntime.lastError = !status.hasCredentials
       ? "Telegram 个人号模式缺少 API ID / API Hash"
-      : "Telegram 个人号模式还没有可用会话，请先执行一次登录";
+      : "Telegram 个人号模式还没有可用会话，请先执行一次登录。";
     console.warn(`[telegram-user] ${telegramRuntime.lastError}`);
     return;
   }

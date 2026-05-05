@@ -159,6 +159,10 @@ export class JsonStore {
       execution: {
         newsMode: defaults.execution?.newsMode === "manual" ? "manual" : "auto",
         analystMode: defaults.execution?.analystMode === "auto" ? "auto" : "manual",
+        forwardOnlyMode:
+          defaults.execution?.forwardOnlyMode === undefined
+            ? true
+            : Boolean(defaults.execution.forwardOnlyMode),
       },
       ai: normalizeAiSettings(defaults.ai, defaults.ai),
       gate: normalizeGateSettings(defaults.gate, defaults.gate),
@@ -203,6 +207,10 @@ export class JsonStore {
           this.state.runtimeSettings?.execution?.newsMode === "manual" ? "manual" : "auto",
         analystMode:
           this.state.runtimeSettings?.execution?.analystMode === "auto" ? "auto" : "manual",
+        forwardOnlyMode:
+          this.state.runtimeSettings?.execution?.forwardOnlyMode === undefined
+            ? fallback.execution.forwardOnlyMode
+            : Boolean(this.state.runtimeSettings?.execution?.forwardOnlyMode),
       },
       ai: normalizeAiSettings(this.state.runtimeSettings?.ai, fallback.ai),
       gate: normalizeGateSettings(this.state.runtimeSettings?.gate, fallback.gate),
@@ -236,6 +244,10 @@ export class JsonStore {
       execution: {
         newsMode: nextSettings?.execution?.newsMode === "manual" ? "manual" : "auto",
         analystMode: nextSettings?.execution?.analystMode === "auto" ? "auto" : "manual",
+        forwardOnlyMode:
+          nextSettings?.execution?.forwardOnlyMode === undefined
+            ? current.execution.forwardOnlyMode
+            : Boolean(nextSettings.execution.forwardOnlyMode),
       },
       ai: normalizeAiSettings(nextAi, current.ai),
       gate: normalizeGateSettings(nextGate, current.gate),

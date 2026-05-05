@@ -88,16 +88,7 @@ const BUY_KEYWORDS = [
   "多单",
   "建仓",
   "加仓",
-  "买入",
-  "做多",
-  "开多",
-  "低多",
-  "看多",
-  "接多",
-  "多单",
   "抄底",
-  "建仓",
-  "加仓",
   "long",
   "buy",
   "accumulate",
@@ -113,16 +104,7 @@ const SELL_KEYWORDS = [
   "高空",
   "看空",
   "空单",
-  "卖出",
-  "止盈",
-  "减仓",
-  "清仓",
   "止损离场",
-  "做空",
-  "开空",
-  "高空",
-  "看空",
-  "空单",
   "short",
   "sell",
   "reduce",
@@ -337,7 +319,7 @@ function extractNumberRange(snippet) {
   }
 
   const rangeMatch = snippet.match(
-    /(\d[\d,]*(?:\.\d+)?)\s*(?:-|~|—|到|至)\s*(\d[\d,]*(?:\.\d+)?)/,
+    /(\d[\d,]*(?:\.\d+)?)\s*(?:-|~|到|至|—|–)\s*(\d[\d,]*(?:\.\d+)?)/,
   );
   if (rangeMatch) {
     const low = toNumber(rangeMatch[1]);
@@ -360,8 +342,8 @@ function extractNumberRange(snippet) {
 
 function extractEntry(text) {
   const patterns = [
-    /(?:入场|进场|建仓|买入|卖出|做多|做空|参考|关注|现价|回踩|突破)\s*(?:区间|位置|附近|价位|点位)?\s*[:：]?\s*([^\n。；;]+)/i,
-    /(?:区间|位置)\s*[:：]?\s*(\d[\d,.]*(?:\s*(?:-|~|—|到|至)\s*\d[\d,.]*)?)/i,
+    /(?:入场|进场|建仓|买入|卖出|做多|做空|关注|现价|回踩|突破)\s*(?:区间|位置|附近|价位|点位)?\s*[:：]?\s*([^\n，。；;]+)/i,
+    /(?:区间|位置)\s*[:：]?\s*(\d[\d,.]*(?:\s*(?:-|~|到|至|—|–)\s*\d[\d,.]*)?)/i,
   ];
 
   for (const pattern of patterns) {
@@ -383,7 +365,7 @@ function extractStopLoss(text) {
 
 function extractTakeProfits(text) {
   const matches = String(text || "").matchAll(
-    /(?:止盈|目标|target|tp\d*)\s*(?:位|价|区间)?\s*[:：]?\s*([^\n。；;]+)/gi,
+    /(?:止盈|目标|target|tp\d*)\s*(?:位|价|区间)?\s*[:：]?\s*([^\n，。；;]+)/gi,
   );
 
   const values = [];
@@ -400,7 +382,7 @@ function extractTakeProfits(text) {
 }
 
 function extractLeverage(text) {
-  const match = String(text || "").match(/(\d{1,3})\s*[xX倍]/);
+  const match = String(text || "").match(/(\d{1,3})\s*(?:x|X|倍)/);
   return match?.[1] ? `${match[1]}x` : "";
 }
 
@@ -460,7 +442,7 @@ function extractEntryV2(text) {
   const patterns = [
     /(?:入场|进场|建仓|买入|卖出|做多|做空|现价|回踩|突破)\s*(?:区间|位置|附近|价格|价位|点位)?\s*[:：]?\s*([^\n，。；;]+)/i,
     /(?:entry|entries|enter|buy|sell|long|short)\s*(?:zone|area|near|at|price)?\s*[:：]?\s*([^\n,.;]+)/i,
-    /(?:区间|位置)\s*[:：]?\s*(\d[\d,.]*(?:\s*(?:-|~|到|至)\s*\d[\d,.]*)?)/i,
+    /(?:区间|位置)\s*[:：]?\s*(\d[\d,.]*(?:\s*(?:-|~|到|至|—|–)\s*\d[\d,.]*)?)/i,
     /(?:zone|range)\s*[:：]?\s*(\d[\d,.]*(?:\s*(?:-|~|to)\s*\d[\d,.]*)?)/i,
   ];
 
@@ -1466,7 +1448,7 @@ export function evaluateSignal(baseSignal, playbooks, config, store) {
       executionStatus = "pending_approval";
       executionReason = finalTradeIdea
         ? "已提炼为结构化交易建议，等待你确认是否跟单"
-        : "已转为结构化行情摘要，但暂未抽取出可执行下单参数";
+        : "已转为结构化行情摘要，但暂未提取出可执行下单参数";
     }
   } else if (selectedPlaybook && tradeIdea) {
     const notionalEstimate =
@@ -1550,6 +1532,7 @@ export function applyAiAnalysis(signal, aiAnalysis) {
     primaryModel: aiAnalysis.primaryModel || signal.analysis.primaryModel,
     reviewModel: aiAnalysis.reviewModel || signal.analysis.reviewModel,
     semanticSummary: aiAnalysis.semanticSummary || signal.analysis.semanticSummary || "",
+    semanticRewrite: aiAnalysis.semanticRewrite || signal.analysis.semanticRewrite || "",
     instructionType: aiAnalysis.instructionType || signal.analysis.instructionType || "",
     executionIntent: aiAnalysis.executionIntent || signal.analysis.executionIntent || "",
     messageType: aiAnalysis.messageType || signal.analysis.messageType,
@@ -1651,19 +1634,6 @@ export function applyAiAnalysis(signal, aiAnalysis) {
       protectionPlan: rebuilt?.protectionPlan || signal.tradeIdea.protectionPlan,
       summary: rebuilt?.summary || signal.tradeIdea.summary,
     };
-  }
-
-  if (signal.sourceType === "analyst") {
-    signal.executionStatus = "pending_approval";
-    signal.executionReason = signal.tradeIdea
-      ? "AI 已补充结构化建议，等待你确认是否跟单"
-      : "AI 已补充结构化摘要，但仍未形成可执行下单参数";
-  }
-
-  if (signal.sourceType === "analyst") {
-    signal.executionReason = signal.tradeIdea
-      ? "AI 已补充结构化建议，等待你确认是否跟单"
-      : "AI 已补充结构化摘要，但仍未形成可执行下单参数";
   }
 
   if (signal.sourceType === "analyst") {
@@ -1952,6 +1922,13 @@ function renderSignalReviewPageV2(signal, token, options = {}) {
       .reject { background: #eef2f7; color: #253047; }
       pre { white-space: pre-wrap; word-break: break-word; background: #f7f9fc; padding: 12px; border-radius: 10px; border: 1px solid #e3e9f3; }
       .callout { margin-top: 14px; padding: 14px 16px; border-radius: 12px; background: #fff6df; border: 1px solid #f1d48b; color: #6d5200; }
+      @media (max-width: 720px) {
+        body { padding: 12px; }
+        .card { padding: 14px; border-radius: 14px; }
+        .meta { grid-template-columns: 1fr; gap: 10px; }
+        .form-grid { grid-template-columns: 1fr; gap: 10px; }
+        .trade-title { font-size: 20px; }
+      }
     </style>
   </head>
   <body>
@@ -1969,14 +1946,14 @@ function renderSignalReviewPageV2(signal, token, options = {}) {
       <form method="post" action="/signals/${signal.id}/approve?token=${encodeURIComponent(token)}">
         <div class="form-grid">
           <div class="field-card">
-            <label for="symbol">甯佺 / 鍚堢害</label>
-            <input id="symbol" name="symbol" type="text" placeholder="渚嬪 BTC_USDT" value="${escapeHtml(symbol)}" />
-            <div class="hint">濡傛灉鍒嗘瀽甯堥暱鏂囨病鏈夋槑纭瘑鍒嚭甯佺锛屼綘鍙互鐩存帴鎵嬪姩濉啓銆?/div>
+            <label for="symbol">币种 / 合约</label>
+            <input id="symbol" name="symbol" type="text" placeholder="例如 BTC_USDT" value="${escapeHtml(symbol)}" />
+            <div class="hint">如果分析师长文没有明确识别出币种，你可以直接手动填写。</div>
           </div>
           <div class="field-card">
-            <label for="contract">瀹為檯涓嬪崟鍚堢害</label>
-            <input id="contract" name="contract" type="text" placeholder="榛樿涓庝笂闈㈢殑甯佺涓€鑷?" value="${escapeHtml(contract)}" />
-            <div class="hint">鍚堢害妯″紡涓嬮€氬父涓庝笂闈㈢殑甯佺涓€鑷达紱濡傛灉浣犳兂鎵嬪姩鍒囨崲鍚堢害锛屽彲浠ュ湪杩欓噷鏀广€?/div>
+            <label for="contract">实际下单合约</label>
+            <input id="contract" name="contract" type="text" placeholder="默认与上方币种一致" value="${escapeHtml(contract)}" />
+            <div class="hint">合约模式下通常与上方币种一致；如果你想手动切换合约，可在这里修改。</div>
           </div>
           <div class="field-card">
             <label for="orderType">订单类型</label>
@@ -2034,59 +2011,4 @@ function renderSignalReviewPageV2(signal, token, options = {}) {
 
 export function renderSignalReviewPage(signal, token, options = {}) {
   return renderSignalReviewPageV2(signal, token, options);
-  const sourceLabel = signal.deliveryDisplayName || signal.displaySourceName || signal.sourceName;
-  const displayText = signal.displayText || signal.text;
-  const structuredBlock = signal.analysis?.normalizedSummary
-    ? `<div class="structured"><h2>结构化摘要</h2><pre>${escapeHtml(signal.analysis.normalizedSummary)}</pre></div>`
-    : "";
-  const tradeBlock = signal.tradeIdea
-    ? `<p><strong>交易建议：</strong>${escapeHtml(signal.tradeIdea.summary)}</p>`
-    : "<p><strong>交易建议：</strong>暂未生成可执行订单</p>";
-
-  const title = signal.sourceType === "analyst" ? "分析师策略确认" : "新闻交易确认";
-
-  return `<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(title)}</title>
-    <style>
-      body { font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; padding: 24px; max-width: 860px; margin: 0 auto; background: #f7f9fc; color: #182233; }
-      .card { border: 1px solid #dbe3ef; background: #fff; border-radius: 18px; padding: 24px; box-shadow: 0 14px 32px rgba(18, 36, 73, 0.08); }
-      .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; margin-bottom: 18px; }
-      .meta-item { background: #f8fbff; border: 1px solid #e3e9f3; border-radius: 12px; padding: 12px; }
-      h1, h2 { margin: 0 0 10px; }
-      .structured { margin: 18px 0; }
-      .actions { display: flex; gap: 12px; margin-top: 20px; }
-      button { padding: 12px 20px; border-radius: 12px; border: 0; cursor: pointer; font: inherit; }
-      .approve { background: #0f6fff; color: white; }
-      .reject { background: #eef2f7; color: #253047; }
-      pre { white-space: pre-wrap; word-break: break-word; background: #f7f9fc; padding: 12px; border-radius: 10px; border: 1px solid #e3e9f3; }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <h1>${escapeHtml(title)}</h1>
-      <div class="meta">
-        <div class="meta-item"><strong>来源：</strong>${escapeHtml(sourceLabel)}</div>
-        <div class="meta-item"><strong>评分：</strong>${signal.score.toFixed(2)}</div>
-        <div class="meta-item"><strong>命中策略：</strong>${escapeHtml(signal.matchedPlaybookIds.join(", ") || "无")}</div>
-        <div class="meta-item"><strong>当前状态：</strong>${escapeHtml(signal.executionReason || "待处理")}</div>
-      </div>
-      ${tradeBlock}
-      ${structuredBlock}
-      <h2>脱敏原文</h2>
-      <pre>${escapeHtml(displayText)}</pre>
-      <div class="actions">
-        <form method="post" action="/signals/${signal.id}/approve?token=${encodeURIComponent(token)}">
-          <button class="approve" type="submit">确认跟单</button>
-        </form>
-        <form method="post" action="/signals/${signal.id}/reject?token=${encodeURIComponent(token)}">
-          <button class="reject" type="submit">忽略这单</button>
-        </form>
-      </div>
-    </div>
-  </body>
-</html>`;
 }

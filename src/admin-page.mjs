@@ -322,8 +322,8 @@ export function renderAdminPage({
       <div class="hero">
         <div class="hero-copy">
           <h1>交易信号后台</h1>
-          <p>这里可以管理 Telegram 监听群、分析师分群转发、分析师 / 新闻的手动与自动交易模式、AI 语义结构化能力，以及 Gate 模拟跟单配置。</p>
-          <div class="badge">分析师原文会先脱敏，再按结构化卡片发送到对应飞书群；只有 AI 明确识别出可执行信号时，才会额外进入“分析师交易信号”总群。</div>
+          <p>这里可以管理 Telegram 监听群、分析师分群转发、纯转发 / 交易模式、飞书群路由，以及 Gate 跟单配置。</p>
+          <div class="badge">当前推荐使用“纯转发模式”：机器人只做去噪、脱敏、话题化转发，不再输出 AI 分析、交易建议或审批按钮。</div>
         </div>
         <div class="actions">
           <a href="/pending" class="button-link button-secondary">查看待决策</a>
@@ -360,9 +360,14 @@ export function renderAdminPage({
           <div class="metric-hint">${escapeHtml(telegramRuntimeSummary || "尚未连接")}</div>
         </div>
         <div class="card">
+          <div class="metric-label">系统模式</div>
+          <div class="metric-value">${runtimeSettings.execution?.forwardOnlyMode !== false ? "纯转发" : "分析交易"}</div>
+          <div class="metric-hint">${runtimeSettings.execution?.forwardOnlyMode !== false ? "不使用 AI 判断与交易按钮" : "会启用 AI / 审批 / 交易链路"}</div>
+        </div>
+        <div class="card">
           <div class="metric-label">AI 结构化</div>
-          <div class="metric-value">${runtimeSettings.ai?.enabled ? "开启" : "关闭"}</div>
-          <div class="metric-hint">当前运行态：${escapeHtml(runtimeAiEnabled ? "已启用" : "未启用")}</div>
+          <div class="metric-value">${runtimeSettings.execution?.forwardOnlyMode !== false ? "旁路" : runtimeSettings.ai?.enabled ? "开启" : "关闭"}</div>
+          <div class="metric-hint">当前运行态：${escapeHtml(runtimeSettings.execution?.forwardOnlyMode !== false ? "纯转发模式下不参与链路" : runtimeAiEnabled ? "已启用" : "未启用")}</div>
         </div>
         <div class="card">
           <div class="metric-label">Gate 跟单通道</div>
@@ -375,7 +380,15 @@ export function renderAdminPage({
         <div class="stack">
           <div class="card">
             <div class="section-title">执行模式</div>
-            <p class="section-copy">分析师和新闻可以分别设置为手动确认或自动执行。分析师专属群始终会收到转发，只有 AI 认为信号足够明确时，才会额外进入“分析师交易信号”总群。</p>
+            <p class="section-copy">你可以把系统切到纯转发模式，只保留话题群转发；或者切回带审批 / 交易建议的旧模式。纯转发开启时，分析师和新闻都不会再走 AI 判断与下单链路。</p>
+            <div class="field">
+              <label for="forwardOnlyMode">系统模式</label>
+              <select id="forwardOnlyMode">
+                <option value="true" ${runtimeSettings.execution?.forwardOnlyMode !== false ? "selected" : ""}>纯转发模式</option>
+                <option value="false" ${runtimeSettings.execution?.forwardOnlyMode === false ? "selected" : ""}>分析 / 交易模式</option>
+              </select>
+              <small>纯转发模式：只做去噪、脱敏、分群转发。分析 / 交易模式：恢复 AI 结构化、审批面板和交易相关链路。</small>
+            </div>
             <div class="field">
               <label for="analystMode">分析师交易模式</label>
               <select id="analystMode">
@@ -417,7 +430,7 @@ export function renderAdminPage({
 
           <div class="card">
             <div class="section-title">AI 文案结构化配置</div>
-            <p class="section-copy">这里已经预设成阿里云百炼双模型链路：千问负责中文语义提取，DeepSeek 负责二次复核和自动化适配判断。你现在只差最后补上密钥。</p>
+            <p class="section-copy">只有当系统模式切回“分析 / 交易模式”时，这里的 AI 配置才会真正参与消息链路。纯转发模式下会整体旁路。</p>
             <div class="field">
               <label for="aiEnabled">AI 结构化开关</label>
               <select id="aiEnabled">
@@ -489,7 +502,7 @@ export function renderAdminPage({
             <div class="field">
               <label for="generalAnalystSignalWebhookUrl">分析师交易信号总群 Webhook</label>
               <input id="generalAnalystSignalWebhookUrl" type="url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..." value="${escapeHtml(runtimeSettings.feishu?.generalAnalystSignalWebhookUrl || "")}" />
-              <small>只有当 AI 明确识别出可直接交易的分析师信号时，系统才会额外把这条消息发到这个总群。手动模式下只转发不执行；自动模式下会执行并把结果也发过去。</small>
+              <small>这个总群只在“分析 / 交易模式”下用于集中广播可执行分析师信号；纯转发模式下不会额外发送到这里。</small>
             </div>
             <div id="analystRoutesWrap" class="route-grid"></div>
           </div>
@@ -596,6 +609,7 @@ export function renderAdminPage({
         newsMode: bootstrap.runtimeSettings.execution?.newsMode === "manual" ? "manual" : "auto",
         analystMode:
           bootstrap.runtimeSettings.execution?.analystMode === "auto" ? "auto" : "manual",
+        forwardOnlyMode: bootstrap.runtimeSettings.execution?.forwardOnlyMode !== false,
         ai: {
           enabled: Boolean(bootstrap.runtimeSettings.ai?.enabled),
           provider: String(bootstrap.runtimeSettings.ai?.provider || "dashscope"),
@@ -621,6 +635,7 @@ export function renderAdminPage({
       const allowedCsv = document.getElementById("allowedCsv");
       const newsCsv = document.getElementById("newsCsv");
       const analystCsv = document.getElementById("analystCsv");
+      const forwardOnlyMode = document.getElementById("forwardOnlyMode");
       const analystMode = document.getElementById("analystMode");
       const newsMode = document.getElementById("newsMode");
       const generalAnalystSignalWebhookUrl = document.getElementById("generalAnalystSignalWebhookUrl");
@@ -729,6 +744,7 @@ export function renderAdminPage({
         allowedCsv.value = nonDiscoveredFromSet(state.allowed);
         newsCsv.value = nonDiscoveredFromSet(state.news);
         analystCsv.value = nonDiscoveredFromSet(state.analyst);
+        forwardOnlyMode.value = state.forwardOnlyMode ? "true" : "false";
         analystMode.value = state.analystMode;
         newsMode.value = state.newsMode;
         generalAnalystSignalWebhookUrl.value = state.generalAnalystSignalWebhookUrl;
@@ -1038,6 +1054,10 @@ export function renderAdminPage({
         state.analystMode = analystMode.value === "auto" ? "auto" : "manual";
       });
 
+      forwardOnlyMode.addEventListener("change", () => {
+        state.forwardOnlyMode = forwardOnlyMode.value !== "false";
+      });
+
       newsMode.addEventListener("change", () => {
         state.newsMode = newsMode.value === "manual" ? "manual" : "auto";
       });
@@ -1096,6 +1116,7 @@ export function renderAdminPage({
             }),
           },
           execution: {
+            forwardOnlyMode: state.forwardOnlyMode,
             analystMode: state.analystMode,
             newsMode: state.newsMode,
           },
@@ -1158,6 +1179,7 @@ export function renderAdminPage({
               },
             ]),
           );
+          state.forwardOnlyMode = saved.execution?.forwardOnlyMode !== false;
           state.analystMode = saved.execution?.analystMode === "auto" ? "auto" : "manual";
           state.newsMode = saved.execution?.newsMode === "manual" ? "manual" : "auto";
           state.ai = {

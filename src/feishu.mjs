@@ -1,41 +1,45 @@
 function formatSignalType(sourceType) {
-  return sourceType === "analyst" ? "分析师策略" : "新闻消息";
+  return sourceType === "analyst" ? "\u5206\u6790\u5e08\u7b56\u7565" : "\u65b0\u95fb\u6d88\u606f";
 }
 
 function formatExecutionStatus(status) {
   const map = {
-    pending_approval: "等待你确认",
-    ready_for_execution: "准备自动执行",
-    dry_run_ready: "命中自动策略，等待模拟执行",
-    dry_run_executed: "模拟执行完成",
-    executed: "已执行",
-    rejected: "已忽略",
-    blocked_risk: "已被风控拦截",
-    notify_only: "仅提醒",
-    execution_failed: "执行失败",
+    pending_approval: "\u7b49\u5f85\u4f60\u786e\u8ba4",
+    ready_for_execution: "\u51c6\u5907\u81ea\u52a8\u6267\u884c",
+    dry_run_ready: "\u547d\u4e2d\u81ea\u52a8\u7b56\u7565\uff0c\u7b49\u5f85\u6a21\u62df\u6267\u884c",
+    dry_run_executed: "\u6a21\u62df\u6267\u884c\u5b8c\u6210",
+    executed: "\u5df2\u6267\u884c",
+    rejected: "\u5df2\u5ffd\u7565",
+    blocked_risk: "\u5df2\u88ab\u98ce\u63a7\u62e6\u622a",
+    notify_only: "\u4ec5\u8f6c\u53d1",
+    execution_failed: "\u6267\u884c\u5931\u8d25",
   };
-  return map[status] || status || "未知";
+  return map[status] || status || "\u672a\u77e5";
 }
 
 function formatResultStatus(status) {
   const map = {
-    dry_run: "模拟执行完成",
-    submitted: "已提交到 Gate",
-    rejected: "已忽略",
-    failed: "执行失败",
-    skipped: "未执行",
+    dry_run: "\u6a21\u62df\u6267\u884c\u5b8c\u6210",
+    submitted: "\u5df2\u63d0\u4ea4\u5230 Gate",
+    submitted_with_warnings: "\u4e3b\u5355\u5df2\u63d0\u4ea4\uff0c\u4f46\u6709\u8b66\u544a",
+    rejected: "\u5df2\u5ffd\u7565",
+    failed: "\u6267\u884c\u5931\u8d25",
+    skipped: "\u672a\u6267\u884c",
+    cancelled: "\u5df2\u64a4\u5355",
+    partially_cancelled: "\u90e8\u5206\u64a4\u5355",
+    protected: "\u4fdd\u62a4\u8ba1\u5212\u5df2\u66f4\u65b0",
   };
-  return map[status] || status || "未知";
+  return map[status] || status || "\u672a\u77e5";
 }
 
 function getDisplaySource(signal, options) {
   if (options?.displayName) {
-    return options.displayName;
+    return String(options.displayName).trim();
   }
   if (signal.sourceType === "analyst") {
-    return signal.displaySourceName || "分析师专线";
+    return String(signal.displaySourceName || "\u5206\u6790\u5e08\u4e13\u7ebf").trim();
   }
-  return signal.sourceName || "信号源";
+  return String(signal.sourceName || "\u4fe1\u53f7\u6e90").trim();
 }
 
 function getDisplayText(signal) {
@@ -47,7 +51,7 @@ function truncateText(text, limit = 3500) {
   if (value.length <= limit) {
     return value;
   }
-  return `${value.slice(0, Math.max(0, limit - 12))}\n\n[内容已截断]`;
+  return `${value.slice(0, Math.max(0, limit - 12))}\n\n[\u5185\u5bb9\u5df2\u622a\u65ad]`;
 }
 
 function escapeMarkdown(value) {
@@ -60,197 +64,156 @@ function escapeMarkdown(value) {
     .replaceAll("]", "\\]");
 }
 
-function formatSignalDirection(signal) {
-  const normalized = String(signal.analysis?.direction || "").toLowerCase();
-  if (normalized === "buy") {
-    return signal.analysis?.directionLabel || "做多";
+function formatIsoTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "\u672a\u77e5\u65f6\u95f4";
   }
-  if (normalized === "sell") {
-    return signal.analysis?.directionLabel || "做空 / 减仓";
-  }
-  if (signal.sourceType === "news") {
-    return "消息触发";
-  }
-  return signal.analysis?.directionLabel || "观点更新";
+  return raw.replace("T", " ").replace("Z", " UTC");
 }
 
-function formatSignalAsset(signal) {
-  if (signal.analysis?.asset) {
-    return String(signal.analysis.asset).toUpperCase();
+function sanitizeForwardText(text) {
+  const masked = String(text || "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\b(?:t\.me|telegram\.me|x\.com|twitter\.com|youtube\.com|youtu\.be)\/\S+/gi, "")
+    .replace(/@\w{3,}/g, "")
+    .replace(/\b(?:vx|wx|wechat|telegram|tg)\s*[:：]?\s*[\w.-]{3,}\b/gi, "")
+    .replace(/(?:微信|电报|飞机|频道|社群|联系|助理|客服)\s*(?:[:：]|\s)\s*[@\w.-]{3,}/g, "")
+    .replace(/\b1\d{10}\b/g, "")
+    .replace(/\b0x[a-fA-F0-9]{16,}\b/g, "");
+
+  const noisePatterns = [
+    /\u4e0d\u6784\u6210\u6295\u8d44\u5efa\u8bae/i,
+    /\u4ec5\u4f9b\u53c2\u8003/i,
+    /\u76c8\u4e8f\u81ea\u8d1f/i,
+    /\u626b\u7801/i,
+    /\u4e8c\u7ef4\u7801/i,
+    /\u52a0\u5165.*(\u7fa4|\u9891\u9053)/i,
+    /\u8ba2\u9605.*(\u9891\u9053|\u793e\u7fa4)/i,
+  ];
+  const contactHint =
+    /(vx|wx|wechat|telegram|tg|http|www\.|t\.me|x\.com|\u8054\u7cfb|\u52a9\u7406|\u5ba2\u670d|\u79c1\u804a|\u793e\u7fa4|\u9891\u9053|\u5546\u52a1|\u5408\u4f5c|\u8fdb\u7fa4|\u8ba2\u9605|\u626b\u7801|\u4e8c\u7ef4\u7801)/i;
+  const tradeHint =
+    /(btc|eth|sol|xrp|bnb|sui|xau|\u6bd4\u7279\u5e01|\u4ee5\u592a|\u9ec4\u91d1|\u505a\u591a|\u505a\u7a7a|\u591a\u5355|\u7a7a\u5355|\u6b62\u635f|\u6b62\u76c8|\u5165\u573a|\u8fdb\u573a|\u652f\u6491|\u538b\u529b|\u884c\u60c5|\u73b0\u4ef7|\d)/i;
+
+  const lines = masked
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .map((line) => line.replace(/[ \t]{2,}/g, " ").trim())
+    .filter(Boolean)
+    .filter((line) => {
+      if (noisePatterns.some((pattern) => pattern.test(line))) {
+        return false;
+      }
+      if (contactHint.test(line) && !tradeHint.test(line)) {
+        return false;
+      }
+      return true;
+    });
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function buildForwardOnlyTitle(signal, displaySource) {
+  const prefix =
+    signal.sourceType === "analyst"
+      ? "\u8bdd\u9898\u8f6c\u53d1"
+      : "\u5feb\u8baf\u8f6c\u53d1";
+  return `${prefix}\uff5c${displaySource}`;
+}
+
+function buildForwardText(signal) {
+  const cleaned = sanitizeForwardText(getDisplayText(signal));
+  return truncateText(cleaned, 3500).trim();
+}
+
+function buildForwardOnlyContent(signal, options = {}) {
+  const displaySource = getDisplaySource(signal, options);
+  const body = sanitizeForwardText(getDisplayText(signal));
+  const lines = [
+    `# ${escapeMarkdown(displaySource)}`,
+    "",
+    `- **\u6765\u6e90\u7c7b\u578b**\uff1a${escapeMarkdown(formatSignalType(signal.sourceType))}`,
+    `- **\u53d1\u9001\u65f6\u95f4**\uff1a${escapeMarkdown(formatIsoTime(signal.publishedAt || signal.createdAt))}`,
+    `- **\u5f53\u524d\u6a21\u5f0f**\uff1a\u7eaf\u8f6c\u53d1`,
+  ];
+
+  if (signal.sourceType === "analyst" && signal.threadAggregationNote) {
+    lines.push(
+      `- **\u8bdd\u9898\u805a\u5408**\uff1a${escapeMarkdown(String(signal.threadAggregationNote).trim())}`,
+    );
   }
-  if (signal.tradeIdea?.symbol) {
-    return String(signal.tradeIdea.symbol).split("_")[0]?.toUpperCase() || "未识别标的";
+  if (options?.routeLabel && options.routeLabel !== displaySource) {
+    lines.push(`- **\u8f6c\u53d1\u5206\u7ec4**\uff1a${escapeMarkdown(options.routeLabel)}`);
   }
-  return "未识别标的";
+
+  if (body) {
+    lines.push(
+      "",
+      "## \u8f6c\u53d1\u6b63\u6587",
+      `> ${escapeMarkdown(truncateText(body, 2400)).replaceAll("\n", "\n> ")}`,
+    );
+  }
+
+  return lines.join("\n");
 }
 
 function getReadableExecutionReason(signal) {
-  if (signal.sourceType === "analyst") {
-    if (signal.executionStatus === "pending_approval") {
-      return signal.tradeIdea
-        ? "AI 已整理出结构化交易建议，等待你确认是否跟单。"
-        : "AI 已完成结构化摘要，但暂未形成可直接执行的订单。";
-    }
-    if (signal.executionStatus === "notify_only") {
-      return "这条分析暂时只做提醒，不会自动下单。";
-    }
-  }
-
-  if (signal.sourceType === "news") {
-    if (signal.executionStatus === "ready_for_execution") {
-      return "这条新闻已命中自动交易条件，系统会继续执行。";
-    }
-    if (signal.executionStatus === "blocked_risk") {
-      return "这条新闻命中了策略，但被风控规则拦截。";
-    }
-    if (signal.executionStatus === "pending_approval") {
-      return "当前新闻模式是手动确认，等待你决定是否执行。";
-    }
-  }
-
-  return String(signal.executionReason || "").trim() || "等待处理。";
+  return String(signal.executionReason || "").trim() || "\u7b49\u5f85\u5904\u7406\u3002";
 }
 
-function buildSignalTitle(signal, displaySource) {
-  if (signal.sourceType !== "analyst") {
-    return signal.tradeIdea?.symbol
-      ? `新闻交易提醒｜${signal.tradeIdea.symbol}`
-      : "新闻交易提醒";
-  }
-
-  const asset = formatSignalAsset(signal);
-  const direction = formatSignalDirection(signal);
-  return `${displaySource}｜${asset} ${direction}`;
+function buildStandardTitle(signal, displaySource) {
+  const prefix =
+    signal.sourceType === "analyst"
+      ? "\u5206\u6790\u5e08\u4fe1\u53f7"
+      : "\u65b0\u95fb\u4fe1\u53f7";
+  return `${prefix}\uff5c${displaySource}`;
 }
 
-function buildSignalHeadline(signal) {
-  const asset = formatSignalAsset(signal);
-  const direction = formatSignalDirection(signal);
-  const typeLabel =
-    signal.analysis?.messageType === "strategy"
-      ? "策略"
-      : signal.analysis?.messageType === "analysis"
-        ? "分析"
-        : signal.analysis?.messageType === "watchlist"
-          ? "观察"
-          : signal.sourceType === "news"
-            ? "快讯"
-            : "提醒";
-
-  return `# ${escapeMarkdown(asset)} ${escapeMarkdown(direction)}｜${escapeMarkdown(typeLabel)}`;
-}
-
-function pickSignalTemplate(signal) {
-  const direction = String(signal.analysis?.direction || signal.tradeIdea?.side || "").toLowerCase();
-  if (direction === "sell") {
-    return "red";
-  }
-  if (direction === "buy") {
-    return "green";
-  }
-  return signal.sourceType === "analyst" ? "blue" : "turquoise";
-}
-
-function buildProtectionLine(signal) {
-  const protectionPlan = signal.tradeIdea?.protectionPlan || {};
-  const stopLoss = protectionPlan.stopLoss ?? signal.analysis?.stopLoss;
-  const takeProfits =
-    protectionPlan.takeProfits ||
-    (Array.isArray(signal.analysis?.takeProfits) ? signal.analysis.takeProfits : []);
-  const riskReward = protectionPlan.riskRewardTarget;
-  const parts = [];
-  if (stopLoss) {
-    parts.push(`止损 ${stopLoss}`);
-  }
-  if (takeProfits?.length) {
-    parts.push(`止盈 ${takeProfits.join(" / ")}`);
-  }
-  if (riskReward) {
-    parts.push(`盈亏比 ${riskReward}`);
-  }
-  return parts.join(" ｜ ");
-}
-
-function buildSignalContent(signal, options = {}) {
-  const needsDecision = signal.executionStatus === "pending_approval";
+function buildStandardContent(signal, options = {}) {
   const displaySource = getDisplaySource(signal, options);
-  const keyTakeaway =
-    signal.tradeIdea?.summary ||
-    signal.analysis?.normalizedSummary?.split("\n").find(Boolean) ||
-    getReadableExecutionReason(signal) ||
-    "这是一条新的结构化交易提醒。";
-  const protectionLine = buildProtectionLine(signal);
-
-  const summaryLines = [
-    `- **来源分组**：${escapeMarkdown(displaySource)}`,
-    `- **类型**：${escapeMarkdown(formatSignalType(signal.sourceType))}`,
-    `- **当前状态**：${escapeMarkdown(formatExecutionStatus(signal.executionStatus))}`,
-    `- **评分**：${escapeMarkdown(Number(signal.score || 0).toFixed(2))}`,
-    `- **命中策略**：${escapeMarkdown(signal.matchedPlaybookIds?.join("、") || "无")}`,
-    `- **AI 建议**：${escapeMarkdown(signal.tradeIdea?.summary || "暂未形成可执行订单")}`,
+  const body = sanitizeForwardText(getDisplayText(signal));
+  const lines = [
+    `# ${escapeMarkdown(displaySource)}`,
+    "",
+    `- **\u6765\u6e90\u7c7b\u578b**\uff1a${escapeMarkdown(formatSignalType(signal.sourceType))}`,
+    `- **\u5f53\u524d\u72b6\u6001**\uff1a${escapeMarkdown(formatExecutionStatus(signal.executionStatus))}`,
+    `- **\u53d1\u9001\u65f6\u95f4**\uff1a${escapeMarkdown(formatIsoTime(signal.publishedAt || signal.createdAt))}`,
+    `- **\u8bf4\u660e**\uff1a${escapeMarkdown(getReadableExecutionReason(signal))}`,
   ];
 
-  if (protectionLine) {
-    summaryLines.push(`- **保护计划**：${escapeMarkdown(protectionLine)}`);
-  }
-  summaryLines.push(`- **说明**：${escapeMarkdown(getReadableExecutionReason(signal))}`);
-
-  const sections = [
-    buildSignalHeadline(signal),
-    "",
-    "## 重点结论",
-    `**${escapeMarkdown(keyTakeaway)}**`,
-    "",
-    "## 策略总览",
-    ...summaryLines,
-  ];
-
-  if (signal.analysis?.normalizedSummary) {
-    const structuredLines = String(signal.analysis.normalizedSummary)
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => `- ${escapeMarkdown(line)}`);
-    sections.push("", "## 结构化分析", ...structuredLines);
-  }
-
-  const body = getDisplayText(signal);
   if (body) {
-    sections.push(
+    lines.push(
       "",
-      "## 转发正文",
+      "## \u8f6c\u53d1\u6b63\u6587",
       `> ${escapeMarkdown(truncateText(body, 2200)).replaceAll("\n", "\n> ")}`,
     );
   }
 
-  if (needsDecision) {
-    sections.push("", "## 操作建议", "_点击下方按钮进入中文决策面板，再决定是否跟单。_");
-  }
-
-  return sections.join("\n");
+  return lines.join("\n");
 }
 
 function buildExecutionContent(signal, result, options = {}) {
   const displaySource = getDisplaySource(signal, options);
-  const details = [
-    `# ${escapeMarkdown(formatSignalAsset(signal))} 执行结果`,
+  const lines = [
+    `# ${escapeMarkdown(displaySource)} \u6267\u884c\u7ed3\u679c`,
     "",
-    `- **信号 ID**：${escapeMarkdown(signal.id)}`,
-    `- **来源分组**：${escapeMarkdown(displaySource)}`,
-    `- **执行状态**：${escapeMarkdown(formatResultStatus(result.status))}`,
-    `- **结果说明**：${escapeMarkdown(result.message || "无")}`,
+    `- **\u72b6\u6001**\uff1a${escapeMarkdown(formatResultStatus(result.status))}`,
+    `- **\u7ed3\u679c\u8bf4\u660e**\uff1a${escapeMarkdown(result.message || "\u65e0")}`,
+    `- **\u65f6\u95f4**\uff1a${escapeMarkdown(formatIsoTime(result.at || new Date().toISOString()))}`,
   ];
 
   if (result.orderId) {
-    details.push(`- **订单号**：${escapeMarkdown(result.orderId)}`);
+    lines.push(`- **\u8ba2\u5355\u53f7**\uff1a${escapeMarkdown(result.orderId)}`);
   }
   if (result.avgPrice) {
-    details.push(`- **成交均价**：${escapeMarkdown(result.avgPrice)}`);
+    lines.push(`- **\u6210\u4ea4\u5747\u4ef7**\uff1a${escapeMarkdown(result.avgPrice)}`);
   }
   if (result.filledSize) {
-    details.push(`- **成交数量**：${escapeMarkdown(result.filledSize)}`);
+    lines.push(`- **\u6210\u4ea4\u6570\u91cf**\uff1a${escapeMarkdown(result.filledSize)}`);
   }
 
-  return details.join("\n");
+  return lines.join("\n");
 }
 
 function buildLegacyPayload({ title, content, buttonUrl = "", buttonText = "" }) {
@@ -259,6 +222,15 @@ function buildLegacyPayload({ title, content, buttonUrl = "", buttonText = "" })
     content,
     button_url: buttonUrl,
     button_text: buttonText,
+  };
+}
+
+function buildTextPayload(text) {
+  return {
+    msg_type: "text",
+    content: {
+      text: text || "\u6682\u65e0\u53ef\u8f6c\u53d1\u6b63\u6587",
+    },
   };
 }
 
@@ -305,6 +277,20 @@ function buildBotCardPayload({ title, content, buttons = [], template = "blue" }
       elements,
     },
   };
+}
+
+function pickTemplate(signal, options = {}) {
+  if (options.forwardOnlyMode) {
+    return signal.sourceType === "analyst" ? "blue" : "turquoise";
+  }
+  const direction = String(signal.analysis?.direction || signal.tradeIdea?.side || "").toLowerCase();
+  if (direction === "sell") {
+    return "red";
+  }
+  if (direction === "buy") {
+    return "green";
+  }
+  return signal.sourceType === "analyst" ? "blue" : "turquoise";
 }
 
 export class FeishuNotifier {
@@ -379,43 +365,19 @@ export class FeishuNotifier {
     }
 
     const webhookUrl = this.resolveWebhookUrl(options.webhookUrl);
-    const needsDecision = signal.executionStatus === "pending_approval";
-    const reviewUrl = this.buildReviewUrl(signal.id, approvalToken);
-    const approveUrl = this.buildApproveUrl(signal.id, approvalToken);
-    const rejectUrl = this.buildRejectUrl(signal.id, approvalToken);
-    const displaySource = getDisplaySource(signal, options);
-    const title = buildSignalTitle(signal, displaySource);
-    const content = buildSignalContent(signal, options);
+    const content = buildForwardText(signal);
 
     if (this.isBotWebhook(webhookUrl)) {
-      const buttons = needsDecision
-        ? [
-            { text: "打开决策面板", url: reviewUrl, type: "primary" },
-            { text: "快速跟单", url: approveUrl, type: "primary" },
-            { text: "忽略这单", url: rejectUrl, type: "default" },
-          ]
-        : reviewUrl
-          ? [{ text: "查看详情", url: reviewUrl, type: "primary" }]
-          : [];
-
-      await this.postWebhook(
-        buildBotCardPayload({
-          title,
-          content,
-          buttons,
-          template: pickSignalTemplate(signal),
-        }),
-        webhookUrl,
-      );
+      await this.postWebhook(buildTextPayload(content), webhookUrl);
       return;
     }
 
     await this.postWebhook(
       buildLegacyPayload({
-        title,
+        title: "",
         content,
-        buttonUrl: reviewUrl,
-        buttonText: needsDecision ? "打开决策面板" : "查看详情",
+        buttonUrl: "",
+        buttonText: "",
       }),
       webhookUrl,
     );
@@ -430,8 +392,8 @@ export class FeishuNotifier {
     const displaySource = getDisplaySource(signal, options);
     const title =
       result.status === "failed"
-        ? `${displaySource} 执行失败`
-        : `${displaySource} 执行结果`;
+        ? `${displaySource} \u6267\u884c\u5931\u8d25`
+        : `${displaySource} \u6267\u884c\u7ed3\u679c`;
     const content = buildExecutionContent(signal, result, options);
 
     if (this.isBotWebhook(webhookUrl)) {
