@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 function formatSignalType(sourceType) {
   return sourceType === "analyst" ? "\u5206\u6790\u5e08\u7b56\u7565" : "\u65b0\u95fb\u6d88\u606f";
 }
@@ -234,6 +236,21 @@ function buildTextPayload(text) {
   };
 }
 
+function buildImagePayload(imageKey) {
+  return {
+    msg_type: "image",
+    content: {
+      image_key: imageKey,
+    },
+  };
+}
+
+function getSignalImages(signal) {
+  return (Array.isArray(signal?.media) ? signal.media : []).filter(
+    (item) => item?.type === "image" && (item.filePath || item.publicUrl || item.feishuImageKey),
+  );
+}
+
 function buildBotCardPayload({ title, content, buttons = [], template = "blue" }) {
   const elements = [
     {
@@ -294,9 +311,14 @@ function pickTemplate(signal, options = {}) {
 }
 
 export class FeishuNotifier {
-  constructor({ webhookUrl, publicBaseUrl }) {
+  constructor({ webhookUrl, publicBaseUrl, appId = "", appSecret = "" }) {
     this.defaultWebhookUrl = webhookUrl;
     this.publicBaseUrl = publicBaseUrl;
+    this.appId = String(appId || "").trim();
+    this.appSecret = String(appSecret || "").trim();
+    this.tenantAccessToken = "";
+    this.tenantAccessTokenExpiresAt = 0;
+    this.imageKeyCache = new Map();
   }
 
   resolveWebhookUrl(overrideWebhookUrl = "") {
@@ -359,6 +381,106 @@ export class FeishuNotifier {
     return data;
   }
 
+  canUploadImages() {
+    return Boolean(this.appId && this.appSecret);
+  }
+
+  async getTenantAccessToken() {
+    if (!this.canUploadImages()) {
+      return "";
+    }
+
+    if (this.tenantAccessToken && Date.now() < this.tenantAccessTokenExpiresAt - 60_000) {
+      return this.tenantAccessToken;
+    }
+
+    const response = await fetch(
+      "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          app_id: this.appId,
+          app_secret: this.appSecret,
+        }),
+      },
+    );
+    const data = await response.json().catch(() => null);
+    if (!response.ok || data?.code !== 0 || !data?.tenant_access_token) {
+      throw new Error(`Feishu tenant token failed: ${data?.msg || response.status}`);
+    }
+
+    this.tenantAccessToken = data.tenant_access_token;
+    this.tenantAccessTokenExpiresAt = Date.now() + Number(data.expire || 7200) * 1000;
+    return this.tenantAccessToken;
+  }
+
+  async uploadImage(media) {
+    if (media?.feishuImageKey) {
+      return media.feishuImageKey;
+    }
+    if (!this.canUploadImages() || !media?.filePath) {
+      return "";
+    }
+
+    const cacheKey = String(media.filePath || media.publicUrl || media.fileName || "");
+    if (cacheKey && this.imageKeyCache.has(cacheKey)) {
+      return this.imageKeyCache.get(cacheKey);
+    }
+
+    const buffer = await fs.promises.readFile(media.filePath);
+    const token = await this.getTenantAccessToken();
+    const form = new FormData();
+    form.append("image_type", "message");
+    form.append(
+      "image",
+      new Blob([buffer], { type: media.mimeType || "image/jpeg" }),
+      media.fileName || "telegram-image.jpg",
+    );
+
+    const response = await fetch("https://open.feishu.cn/open-apis/im/v1/images", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: form,
+    });
+    const data = await response.json().catch(() => null);
+    const imageKey = data?.data?.image_key || "";
+    if (!response.ok || data?.code !== 0 || !imageKey) {
+      throw new Error(`Feishu image upload failed: ${data?.msg || response.status}`);
+    }
+
+    if (cacheKey) {
+      this.imageKeyCache.set(cacheKey, imageKey);
+    }
+    return imageKey;
+  }
+
+  async sendSignalImages(signal, webhookUrl) {
+    const images = getSignalImages(signal);
+    for (const image of images) {
+      try {
+        const imageKey = await this.uploadImage(image);
+        if (imageKey) {
+          await this.postWebhook(buildImagePayload(imageKey), webhookUrl);
+          continue;
+        }
+        if (image.publicUrl) {
+          await this.postWebhook(buildTextPayload(`[图片] ${image.publicUrl}`), webhookUrl);
+        }
+      } catch (error) {
+        if (image.publicUrl) {
+          await this.postWebhook(buildTextPayload(`[图片] ${image.publicUrl}`), webhookUrl);
+        } else {
+          console.warn(`[feishu] image forwarding failed: ${error.message}`);
+        }
+      }
+    }
+  }
+
   async sendSignalCard(signal, approvalToken, options = {}) {
     if (!this.isConfigured(options.webhookUrl)) {
       return;
@@ -368,14 +490,25 @@ export class FeishuNotifier {
     const content = buildForwardText(signal);
 
     if (this.isBotWebhook(webhookUrl)) {
-      await this.postWebhook(buildTextPayload(content), webhookUrl);
+      if (content) {
+        await this.postWebhook(buildTextPayload(content), webhookUrl);
+      }
+      await this.sendSignalImages(signal, webhookUrl);
       return;
     }
+
+    const images = getSignalImages(signal);
+    const legacyContent = [
+      content,
+      ...images.map((image) => image.publicUrl).filter(Boolean).map((url) => `[图片] ${url}`),
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     await this.postWebhook(
       buildLegacyPayload({
         title: "",
-        content,
+        content: legacyContent,
         buttonUrl: "",
         buttonText: "",
       }),

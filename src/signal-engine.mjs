@@ -1329,7 +1329,8 @@ export function createSignalFromTelegramMessage(message, config) {
   }
 
   const text = message.text || message.caption || "";
-  if (!text.trim()) {
+  const media = Array.isArray(message.media) ? message.media : [];
+  if (!text.trim() && !media.length) {
     return null;
   }
 
@@ -1350,6 +1351,7 @@ export function createSignalFromTelegramMessage(message, config) {
     sourceName: message.chat?.title || message.chat?.username || chatId || "telegram",
     chatId,
     text,
+    media,
     publishedAt: new Date((message.date || Math.floor(Date.now() / 1000)) * 1000).toISOString(),
   };
 }

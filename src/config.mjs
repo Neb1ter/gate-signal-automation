@@ -63,6 +63,7 @@ function parseBoolean(value, fallback = false) {
 loadEnvFile(envFilePath);
 
 const dataDir = path.resolve(projectRoot, process.env.DATA_DIR || "./data");
+const mediaDir = path.resolve(dataDir, process.env.MEDIA_DIR || "./media");
 const telegramUserSessionFile = path.resolve(
   projectRoot,
   process.env.TELEGRAM_USER_SESSION_FILE || "./data/telegram-user-session.txt",
@@ -87,6 +88,7 @@ export const config = {
     process.env.PLAYBOOKS_FILE || "./config/playbooks.example.json",
   ),
   dataDir,
+  mediaDir,
   maxDailyTrades: parseInteger(process.env.MAX_DAILY_TRADES, 5),
   maxDailyNotionalUsd: parseInteger(process.env.MAX_DAILY_NOTIONAL_USD, 1000),
   dedupWindowSec: parseInteger(process.env.DEDUP_WINDOW_SEC, 1800),
@@ -108,6 +110,8 @@ export const config = {
   },
   feishu: {
     webhookUrl: process.env.FEISHU_WEBHOOK_URL || "",
+    appId: process.env.FEISHU_APP_ID || "",
+    appSecret: process.env.FEISHU_APP_SECRET || "",
   },
   ai: {
     enabled: parseBoolean(process.env.AI_REVIEW_ENABLED, false),
@@ -135,6 +139,7 @@ export const config = {
 
 export function ensureRuntimeDirs() {
   fs.mkdirSync(config.dataDir, { recursive: true });
+  fs.mkdirSync(config.mediaDir, { recursive: true });
 }
 
 export function loadPlaybooks() {

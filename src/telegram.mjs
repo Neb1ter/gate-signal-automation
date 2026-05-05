@@ -56,6 +56,40 @@ function getChatTitle(chatId, chatEntity) {
   );
 }
 
+function pickLargestPhoto(photoList) {
+  const photos = Array.isArray(photoList) ? photoList : [];
+  return photos
+    .filter((photo) => photo?.file_id)
+    .sort((a, b) => Number(b.file_size || 0) - Number(a.file_size || 0))[0] || null;
+}
+
+function extensionFromMimeType(mimeType = "") {
+  const normalized = String(mimeType || "").toLowerCase();
+  if (normalized.includes("png")) {
+    return "png";
+  }
+  if (normalized.includes("webp")) {
+    return "webp";
+  }
+  return "jpg";
+}
+
+function bufferFromDownloadedMedia(value) {
+  if (!value) {
+    return null;
+  }
+  if (Buffer.isBuffer(value)) {
+    return value;
+  }
+  if (value instanceof Uint8Array) {
+    return Buffer.from(value);
+  }
+  if (Array.isArray(value)) {
+    return Buffer.from(value);
+  }
+  return null;
+}
+
 export function loadTelegramUserSession({ userSession = "", userSessionFile = "" } = {}) {
   const inlineSession = String(userSession || "").trim();
   if (inlineSession) {
@@ -87,10 +121,14 @@ export function saveTelegramUserSession(userSessionFile, sessionString) {
 export async function normalizeTelegramUserMessage(message) {
   const chatId = String(message?.chatId || utils.getPeerId(message?.peerId));
   const chatEntity = await message?.getChat?.().catch(() => null);
+  const hasMedia = Boolean(message?.media);
 
   return {
     text: String(message?.message || message?.text || ""),
     caption: "",
+    hasMedia,
+    media: hasMedia ? [{ type: "image", source: "telegram_user" }] : [],
+    _rawMessage: message,
     date: toUnixSeconds(message?.date),
     edit_date: message?.editDate ? toUnixSeconds(message.editDate) : undefined,
     chat: {
@@ -154,6 +192,40 @@ export class TelegramBotSource {
     return this.#call("deleteWebhook", {
       drop_pending_updates: false,
     });
+  }
+
+  async downloadMessageMedia(message) {
+    const photo = pickLargestPhoto(message?.photo);
+    if (!photo?.file_id) {
+      return [];
+    }
+
+    const file = await this.#call("getFile", {
+      file_id: photo.file_id,
+    });
+    if (!file?.file_path) {
+      return [];
+    }
+
+    const url = `https://api.telegram.org/file/bot${this.botToken}/${file.file_path}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Telegram file download failed: ${response.status}`);
+    }
+
+    const mimeType = response.headers.get("content-type") || "image/jpeg";
+    const arrayBuffer = await response.arrayBuffer();
+    return [
+      {
+        type: "image",
+        source: "telegram_bot",
+        buffer: Buffer.from(arrayBuffer),
+        mimeType,
+        fileName: `telegram-${photo.file_unique_id || photo.file_id}.${extensionFromMimeType(mimeType)}`,
+        telegramFileId: photo.file_id,
+        telegramFileUniqueId: photo.file_unique_id || "",
+      },
+    ];
   }
 }
 
@@ -237,7 +309,7 @@ export class TelegramUserSource {
       async (event) => {
         try {
           const normalizedMessage = await normalizeTelegramUserMessage(event.message);
-          if (!String(normalizedMessage.text || "").trim()) {
+          if (!String(normalizedMessage.text || "").trim() && !normalizedMessage.hasMedia) {
             return;
           }
           await onMessage({
@@ -269,6 +341,30 @@ export class TelegramUserSource {
       await this.client.disconnect();
       this.client = null;
     }
+  }
+
+  async downloadMessageMedia(message) {
+    const rawMessage = message?._rawMessage;
+    if (!rawMessage?.media || !this.client) {
+      return [];
+    }
+
+    const downloaded = await this.client.downloadMedia(rawMessage, {});
+    const buffer = bufferFromDownloadedMedia(downloaded);
+    if (!buffer?.length) {
+      return [];
+    }
+
+    const mimeType = rawMessage?.media?.photo ? "image/jpeg" : "application/octet-stream";
+    return [
+      {
+        type: "image",
+        source: "telegram_user",
+        buffer,
+        mimeType,
+        fileName: `telegram-user-${rawMessage.id || Date.now()}.${extensionFromMimeType(mimeType)}`,
+      },
+    ];
   }
 }
 

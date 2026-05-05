@@ -51,3 +51,7 @@ services:
         sync: false
       - key: FEISHU_WEBHOOK_URL
         sync: false
+      - key: FEISHU_APP_ID
+        sync: false
+      - key: FEISHU_APP_SECRET
+        sync: false

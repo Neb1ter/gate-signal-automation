@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import http from "node:http";
+import path from "node:path";
 
 import { AnalystAiReviewer } from "./analyst-ai.mjs";
 import { buildAnalystMetrics } from "./analyst-metrics.mjs";
@@ -31,6 +33,8 @@ const store = new JsonStore(config.dataDir);
 const feishuNotifier = new FeishuNotifier({
   webhookUrl: config.feishu.webhookUrl,
   publicBaseUrl: config.publicBaseUrl,
+  appId: config.feishu.appId,
+  appSecret: config.feishu.appSecret,
 });
 const telegramSource = createTelegramSource(config.telegram);
 const telegramRuntime = {
@@ -39,7 +43,7 @@ const telegramRuntime = {
   identity: "",
   lastError: "",
 };
-const APP_BUILD = "forward-only-text-v1";
+const APP_BUILD = "forward-only-media-v1";
 const safeConfiguredChatLabels = {
   "-1003758464445": "Get8.Pro",
   "-1003720685651": "Get8.Pro_News",
@@ -312,6 +316,85 @@ function getSignalDeliveryTargets(signal) {
     targets.push(generalTarget);
   }
   return dedupeDeliveryTargets(targets);
+}
+
+function extensionFromMimeType(mimeType = "") {
+  const normalized = String(mimeType || "").toLowerCase();
+  if (normalized.includes("png")) {
+    return "png";
+  }
+  if (normalized.includes("webp")) {
+    return "webp";
+  }
+  if (normalized.includes("gif")) {
+    return "gif";
+  }
+  return "jpg";
+}
+
+function mediaPublicUrl(fileName) {
+  const baseUrl = String(config.publicBaseUrl || "").replace(/\/$/, "");
+  return baseUrl ? `${baseUrl}/media/${encodeURIComponent(fileName)}` : "";
+}
+
+function persistDownloadedMedia(items = [], message = {}) {
+  const media = [];
+  fs.mkdirSync(config.mediaDir, { recursive: true });
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const buffer = Buffer.isBuffer(item?.buffer) ? item.buffer : null;
+    if (!buffer?.length || item?.type !== "image") {
+      continue;
+    }
+
+    const hash = crypto.createHash("sha256").update(buffer).digest("hex").slice(0, 24);
+    const ext = extensionFromMimeType(item.mimeType);
+    const messageId = String(message?.message_id || message?.id || Date.now()).replace(/\D/g, "");
+    const fileName = `${messageId || "telegram"}-${hash}.${ext}`;
+    const filePath = path.join(config.mediaDir, fileName);
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, buffer);
+    }
+
+    media.push({
+      type: "image",
+      mimeType: item.mimeType || "image/jpeg",
+      fileName,
+      filePath,
+      publicUrl: mediaPublicUrl(fileName),
+      telegramFileId: item.telegramFileId || "",
+      telegramFileUniqueId: item.telegramFileUniqueId || "",
+    });
+  }
+
+  return media;
+}
+
+async function hydrateTelegramMessageMedia(message) {
+  if (!message || !telegramSource?.downloadMessageMedia) {
+    return message;
+  }
+
+  const existingMedia = Array.isArray(message.media) ? message.media : [];
+  const hasStoredMedia = existingMedia.some((item) => item?.filePath || item?.publicUrl);
+  if (hasStoredMedia) {
+    return message;
+  }
+
+  try {
+    const downloaded = await telegramSource.downloadMessageMedia(message);
+    const persisted = persistDownloadedMedia(downloaded, message);
+    if (persisted.length) {
+      message.media = persisted;
+    } else if (existingMedia.length) {
+      message.media = existingMedia;
+    }
+  } catch (error) {
+    console.warn(`[telegram-media] failed to download media: ${error.message}`);
+    message.media = existingMedia;
+  }
+
+  return message;
 }
 
 function getExecutionResultDeliveryTargets(signal, trigger) {
@@ -1487,6 +1570,7 @@ async function processTelegramMessage(message) {
     return null;
   }
 
+  await hydrateTelegramMessageMedia(message);
   store.recordTelegramChat(message);
 
   const baseSignal = createSignalFromTelegramMessage(message, {
@@ -1743,6 +1827,33 @@ const server = http.createServer(async (request, response) => {
 
     if (request.method === "GET" && url.pathname === "/") {
       redirect(response, "/admin");
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith("/media/")) {
+      const fileName = path.basename(decodeURIComponent(url.pathname.slice("/media/".length)));
+      const filePath = path.resolve(config.mediaDir, fileName);
+      const mediaRoot = path.resolve(config.mediaDir);
+      if (!fileName || !filePath.startsWith(mediaRoot + path.sep) || !fs.existsSync(filePath)) {
+        response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Not found");
+        return;
+      }
+
+      const ext = path.extname(fileName).toLowerCase();
+      const contentType =
+        ext === ".png"
+          ? "image/png"
+          : ext === ".webp"
+            ? "image/webp"
+            : ext === ".gif"
+              ? "image/gif"
+              : "image/jpeg";
+      response.writeHead(200, {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=604800, immutable",
+      });
+      fs.createReadStream(filePath).pipe(response);
       return;
     }
 
