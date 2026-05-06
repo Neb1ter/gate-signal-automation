@@ -43,7 +43,8 @@ const telegramRuntime = {
   identity: "",
   lastError: "",
 };
-const APP_BUILD = "forward-only-media-v2";
+const APP_BUILD = "forward-only-media-cleanup-v1";
+scheduleMediaCleanup();
 const safeConfiguredChatLabels = {
   "-1003758464445": "Get8.Pro",
   "-1003720685651": "Get8.Pro_News",
@@ -335,6 +336,51 @@ function extensionFromMimeType(mimeType = "") {
 function mediaPublicUrl(fileName) {
   const baseUrl = String(config.publicBaseUrl || "").replace(/\/$/, "");
   return baseUrl ? `${baseUrl}/media/${encodeURIComponent(fileName)}` : "";
+}
+
+async function cleanupOldMediaFiles({ retentionDays = config.mediaRetentionDays } = {}) {
+  const days = Math.max(1, Number(retentionDays) || 7);
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  let deleted = 0;
+  let scanned = 0;
+
+  try {
+    await fs.promises.mkdir(config.mediaDir, { recursive: true });
+    const entries = await fs.promises.readdir(config.mediaDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      const filePath = path.join(config.mediaDir, entry.name);
+      const ext = path.extname(entry.name).toLowerCase();
+      if (![".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext)) {
+        continue;
+      }
+
+      scanned += 1;
+      const stats = await fs.promises.stat(filePath);
+      if (stats.mtimeMs < cutoff) {
+        await fs.promises.unlink(filePath);
+        deleted += 1;
+      }
+    }
+  } catch (error) {
+    console.warn(`[media-cleanup] failed: ${error.message}`);
+    return { scanned, deleted, error: error.message };
+  }
+
+  if (deleted) {
+    console.log(`[media-cleanup] deleted ${deleted}/${scanned} files older than ${days} days`);
+  }
+  return { scanned, deleted };
+}
+
+function scheduleMediaCleanup() {
+  void cleanupOldMediaFiles();
+  setInterval(() => {
+    void cleanupOldMediaFiles();
+  }, 12 * 60 * 60 * 1000).unref?.();
 }
 
 function persistDownloadedMedia(items = [], message = {}) {
@@ -1876,6 +1922,7 @@ const server = http.createServer(async (request, response) => {
         telegramRuntime: getTelegramRuntimeSummarySafe(),
         signalCount: store.listSignals().length,
         knownTelegramChats: store.listKnownTelegramChats().length,
+        mediaRetentionDays: config.mediaRetentionDays,
       });
       return;
     }

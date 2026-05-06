@@ -93,6 +93,7 @@ export const config = {
   maxDailyNotionalUsd: parseInteger(process.env.MAX_DAILY_NOTIONAL_USD, 1000),
   dedupWindowSec: parseInteger(process.env.DEDUP_WINDOW_SEC, 1800),
   analystThreadCollectMs: parseInteger(process.env.ANALYST_THREAD_COLLECT_MS, 12000),
+  mediaRetentionDays: parseInteger(process.env.MEDIA_RETENTION_DAYS, 7),
   telegram: {
     sourceMode: telegramSourceMode,
     botToken: process.env.TELEGRAM_BOT_TOKEN || "",

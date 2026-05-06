@@ -41,6 +41,8 @@ services:
         value: "1000"
       - key: DEDUP_WINDOW_SEC
         value: "1800"
+      - key: MEDIA_RETENTION_DAYS
+        value: "7"
       - key: APPROVAL_SIGNING_SECRET
         generateValue: true
       - key: TELEGRAM_WEBHOOK_SECRET
