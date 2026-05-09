@@ -39,21 +39,36 @@ const defaultRuntimeSettings = {
   },
 };
 
-// Auto-seed analystRoutes from payload file if saved routes are empty
-(function seedAnalystRoutesOnStartup() {
-  const currentSettings = store.getRuntimeSettings(defaultRuntimeSettings);
-  if (currentSettings.feishu?.analystRoutes?.length > 0) return;
+// Merge analystRoutes from payload file on every startup.
+// Payload routes always win for matching chatIds; existing routes for
+// other chatIds are preserved so manual additions survive restarts.
+(function mergeAnalystRoutesOnStartup() {
   try {
     const payloadPath = path.join(process.cwd(), "config", "runtime-settings-payload.json");
-    if (fs.existsSync(payloadPath)) {
-      const payload = JSON.parse(fs.readFileSync(payloadPath, "utf8"));
-      if (payload.feishu?.analystRoutes?.length > 0) {
-        store.saveRuntimeSettings({ feishu: { analystRoutes: payload.feishu.analystRoutes } }, defaultRuntimeSettings);
-        console.log("[startup] Seeded analystRoutes from runtime-settings-payload.json");
-      }
-    }
+    if (!fs.existsSync(payloadPath)) return;
+    const payload = JSON.parse(fs.readFileSync(payloadPath, "utf8"));
+    const payloadRoutes = payload.feishu?.analystRoutes;
+    if (!Array.isArray(payloadRoutes) || payloadRoutes.length === 0) return;
+
+    const currentSettings = store.getRuntimeSettings(defaultRuntimeSettings);
+    const savedRoutes = currentSettings.feishu?.analystRoutes || [];
+    const payloadChatIds = new Set(payloadRoutes.map((r) => r.chatId));
+
+    // Keep saved routes for chatIds NOT in the payload; overwrite with payload for matching ids
+    const merged = [
+      ...savedRoutes.filter((r) => !payloadChatIds.has(r.chatId)),
+      ...payloadRoutes,
+    ];
+
+    store.saveRuntimeSettings(
+      { feishu: { analystRoutes: merged } },
+      defaultRuntimeSettings,
+    );
+    console.log(
+      `[startup] Merged analystRoutes: ${payloadRoutes.length} from payload, ${merged.length} total`,
+    );
   } catch (e) {
-    console.warn("[startup] Failed to seed analystRoutes:", e.message);
+    console.warn("[startup] Failed to merge analystRoutes:", e.message);
   }
 })();
 
