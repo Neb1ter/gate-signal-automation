@@ -37,76 +37,6 @@ function normalizeFeishuSettings(value, defaults = {}) {
   };
 }
 
-function normalizeSymbolList(value) {
-  if (Array.isArray(value)) {
-    return [...new Set(value.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean))];
-  }
-  return [...new Set(String(value || "")
-    .split(",")
-    .map((item) => item.trim().toUpperCase())
-    .filter(Boolean))];
-}
-
-function normalizeAnalystConfigs(value) {
-  const configs = Array.isArray(value) ? value : [];
-  const normalized = [];
-  const seen = new Set();
-
-  for (const item of configs) {
-    const chatId = String(item?.chatId || "").trim();
-    if (!chatId || seen.has(chatId)) {
-      continue;
-    }
-
-    normalized.push({
-      chatId,
-      enabled: item?.enabled !== false,
-      amountQuote: String(item?.amountQuote || "").trim() || "100",
-      allowedSymbols: normalizeSymbolList(item?.allowedSymbols),
-    });
-    seen.add(chatId);
-  }
-
-  return normalized;
-}
-
-function normalizeAiSettings(value, defaults = {}) {
-  const source = value || {};
-  return {
-    enabled: source.enabled === undefined ? Boolean(defaults.enabled) : Boolean(source.enabled),
-    provider: String(source.provider ?? defaults.provider ?? "dashscope").trim() || "dashscope",
-    apiKey: String(source.apiKey ?? defaults.apiKey ?? "").trim(),
-    baseUrl:
-      String(
-        source.baseUrl ??
-          defaults.baseUrl ??
-          "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      ).trim() || "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    primaryModel:
-      String(source.primaryModel ?? source.model ?? defaults.primaryModel ?? defaults.model ?? "")
-        .trim() || "qwen3.5-plus",
-    reviewModel:
-      String(source.reviewModel ?? defaults.reviewModel ?? "").trim() || "deepseek-v3.2",
-    reviewEnabled:
-      source.reviewEnabled === undefined
-        ? defaults.reviewEnabled !== false
-        : Boolean(source.reviewEnabled),
-    timeoutMs: Number(source.timeoutMs ?? defaults.timeoutMs ?? 30000) || 30000,
-  };
-}
-
-function normalizeGateSettings(value, defaults = {}) {
-  const source = value || {};
-  const rawMode = String(source.mode ?? defaults.mode ?? "dry_run").trim();
-  const mode = rawMode === "testnet" ? "futures_testnet" : rawMode;
-  return {
-    mode: ["dry_run", "spot_testnet", "futures_testnet"].includes(mode) ? mode : "dry_run",
-    apiKey: String(source.apiKey ?? defaults.apiKey ?? "").trim(),
-    apiSecret: String(source.apiSecret ?? defaults.apiSecret ?? "").trim(),
-    baseUrl: String(source.baseUrl ?? defaults.baseUrl ?? "").trim(),
-  };
-}
-
 export class JsonStore {
   constructor(dataDir) {
     this.filePath = path.join(dataDir, "state.json");
@@ -117,8 +47,6 @@ export class JsonStore {
     return {
       telegramOffset: 0,
       signals: [],
-      trades: [],
-      executions: [],
       runtimeSettings: {},
       knownTelegramChats: [],
       recentAnalystMessages: {},
@@ -151,19 +79,10 @@ export class JsonStore {
       feishu: {
         ...normalizeFeishuSettings(defaults.feishu, defaults.feishu),
       },
-      analysts: {
-        configs: normalizeAnalystConfigs(defaults.analysts?.configs),
-      },
       execution: {
         newsMode: defaults.execution?.newsMode === "manual" ? "manual" : "auto",
-        analystMode: defaults.execution?.analystMode === "auto" ? "auto" : "manual",
-        forwardOnlyMode:
-          defaults.execution?.forwardOnlyMode === undefined
-            ? true
-            : Boolean(defaults.execution.forwardOnlyMode),
+        forwardOnlyMode: true,
       },
-      ai: normalizeAiSettings(defaults.ai, defaults.ai),
-      gate: normalizeGateSettings(defaults.gate, defaults.gate),
     };
   }
 
@@ -197,21 +116,11 @@ export class JsonStore {
       feishu: {
         ...normalizeFeishuSettings(this.state.runtimeSettings?.feishu, fallback.feishu),
       },
-      analysts: {
-        configs: normalizeAnalystConfigs(this.state.runtimeSettings?.analysts?.configs),
-      },
       execution: {
         newsMode:
           this.state.runtimeSettings?.execution?.newsMode === "manual" ? "manual" : "auto",
-        analystMode:
-          this.state.runtimeSettings?.execution?.analystMode === "auto" ? "auto" : "manual",
-        forwardOnlyMode:
-          this.state.runtimeSettings?.execution?.forwardOnlyMode === undefined
-            ? fallback.execution.forwardOnlyMode
-            : Boolean(this.state.runtimeSettings?.execution?.forwardOnlyMode),
+        forwardOnlyMode: true,
       },
-      ai: normalizeAiSettings(this.state.runtimeSettings?.ai, fallback.ai),
-      gate: normalizeGateSettings(this.state.runtimeSettings?.gate, fallback.gate),
     };
   }
 
@@ -219,9 +128,6 @@ export class JsonStore {
     const current = this.getRuntimeSettings(defaults);
     const nextTelegram = nextSettings?.telegram || {};
     const nextFeishu = nextSettings?.feishu || {};
-    const nextAnalysts = nextSettings?.analysts || {};
-    const nextAi = nextSettings?.ai || {};
-    const nextGate = nextSettings?.gate || {};
 
     this.state.runtimeSettings = {
       telegram: {
@@ -236,19 +142,10 @@ export class JsonStore {
       feishu: {
         ...normalizeFeishuSettings(nextFeishu, current.feishu),
       },
-      analysts: {
-        configs: normalizeAnalystConfigs(nextAnalysts.configs ?? current.analysts.configs),
-      },
       execution: {
         newsMode: nextSettings?.execution?.newsMode === "manual" ? "manual" : "auto",
-        analystMode: nextSettings?.execution?.analystMode === "auto" ? "auto" : "manual",
-        forwardOnlyMode:
-          nextSettings?.execution?.forwardOnlyMode === undefined
-            ? current.execution.forwardOnlyMode
-            : Boolean(nextSettings.execution.forwardOnlyMode),
+        forwardOnlyMode: true,
       },
-      ai: normalizeAiSettings(nextAi, current.ai),
-      gate: normalizeGateSettings(nextGate, current.gate),
     };
 
     this.save();
@@ -406,75 +303,4 @@ export class JsonStore {
     this.save();
   }
 
-  appendTrade(trade) {
-    this.state.trades.push(trade);
-    this.save();
-  }
-
-  upsertExecution(execution) {
-    const index = this.state.executions.findIndex((item) => item.id === execution.id);
-    if (index >= 0) {
-      this.state.executions[index] = execution;
-    } else {
-      this.state.executions.push(execution);
-    }
-    this.save();
-  }
-
-  getExecution(id) {
-    return this.state.executions.find((item) => item.id === id) || null;
-  }
-
-  listExecutionsForSignal(signalId) {
-    return this.state.executions
-      .filter((item) => String(item.signalId || "") === String(signalId || ""))
-      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-  }
-
-  listExecutionsByFilter({
-    chatId = "",
-    sourceType = "",
-    symbol = "",
-    onlyActive = false,
-    limit = 20,
-  } = {}) {
-    const wantedChatId = String(chatId || "").trim();
-    const wantedSourceType = String(sourceType || "").trim();
-    const wantedSymbol = String(symbol || "").trim().toUpperCase();
-    const activeStatuses = new Set([
-      "submitted",
-      "submitted_with_warnings",
-      "partially_cancelled",
-      "protected",
-    ]);
-
-    return this.state.executions
-      .filter((item) => {
-        if (wantedChatId && String(item.chatId || "") !== wantedChatId) {
-          return false;
-        }
-        if (wantedSourceType && String(item.sourceType || "") !== wantedSourceType) {
-          return false;
-        }
-        if (wantedSymbol && String(item.symbol || "").toUpperCase() !== wantedSymbol) {
-          return false;
-        }
-        if (onlyActive && !activeStatuses.has(String(item.status || ""))) {
-          return false;
-        }
-        return true;
-      })
-      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
-      .slice(0, limit);
-  }
-
-  listTrades() {
-    return [...this.state.trades].sort((a, b) =>
-      String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
-    );
-  }
-
-  listTradesForDatePrefix(datePrefix) {
-    return this.state.trades.filter((trade) => trade.createdAt.startsWith(datePrefix));
-  }
 }
