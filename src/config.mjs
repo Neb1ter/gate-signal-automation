@@ -80,7 +80,7 @@ export const config = {
   port: parseInteger(process.env.PORT, 8787),
   publicBaseUrl: process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || "",
   approvalSigningSecret: process.env.APPROVAL_SIGNING_SECRET || "replace-me",
-  adminAccessToken: process.env.ADMIN_ACCESS_TOKEN || "",
+  adminAccessToken: (process.env.ADMIN_ACCESS_TOKEN || "").trim(),
   playbooksFile: path.resolve(
     projectRoot,
     process.env.PLAYBOOKS_FILE || "./config/playbooks.example.json",
