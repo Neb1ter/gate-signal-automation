@@ -30,6 +30,61 @@ import { createTelegramSource } from "./telegram.mjs";
 ensureRuntimeDirs();
 const playbooks = loadPlaybooks();
 const store = new JsonStore(config.dataDir);
+
+const defaultRuntimeSettings = {
+  telegram: {
+    allowedChatIds: config.telegram.allowedChatIds,
+    analystChatIds: config.telegram.analystChatIds,
+    newsChatIds: config.telegram.newsChatIds,
+  },
+  feishu: {
+    analystRoutes: [],
+    generalAnalystSignalWebhookUrl: "",
+  },
+  analysts: {
+    configs: [],
+  },
+  execution: {
+    newsMode: "auto",
+    analystMode: "manual",
+    forwardOnlyMode: true,
+  },
+  ai: {
+    enabled: config.ai.enabled,
+    provider: config.ai.provider,
+    apiKey: config.ai.apiKey,
+    baseUrl: config.ai.baseUrl,
+    primaryModel: config.ai.primaryModel,
+    reviewModel: config.ai.reviewModel,
+    reviewEnabled: config.ai.reviewEnabled,
+    timeoutMs: config.ai.timeoutMs,
+  },
+  gate: {
+    mode: config.dryRun ? "dry_run" : "futures_testnet",
+    apiKey: config.gate.apiKey,
+    apiSecret: config.gate.apiSecret,
+    baseUrl: config.gate.baseUrl,
+  },
+};
+
+// Auto-seed analystRoutes from payload file if saved routes are empty
+(function seedAnalystRoutesOnStartup() {
+  const currentSettings = store.getRuntimeSettings(defaultRuntimeSettings);
+  if (currentSettings.feishu?.analystRoutes?.length > 0) return;
+  try {
+    const payloadPath = path.join(process.cwd(), "config", "runtime-settings-payload.json");
+    if (fs.existsSync(payloadPath)) {
+      const payload = JSON.parse(fs.readFileSync(payloadPath, "utf8"));
+      if (payload.feishu?.analystRoutes?.length > 0) {
+        store.saveRuntimeSettings({ feishu: { analystRoutes: payload.feishu.analystRoutes } }, defaultRuntimeSettings);
+        console.log("[startup] Seeded analystRoutes from runtime-settings-payload.json");
+      }
+    }
+  } catch (e) {
+    console.warn("[startup] Failed to seed analystRoutes:", e.message);
+  }
+})();
+
 const feishuNotifier = new FeishuNotifier({
   webhookUrl: config.feishu.webhookUrl,
   publicBaseUrl: config.publicBaseUrl,
@@ -95,42 +150,6 @@ const normalizedChatLabels = {
   "-1003300637347": "btc乔乔",
   "-1003044946193": "大漂亮策略早知道",
   "-1003547241758": "熬鹰资本",
-};
-
-const defaultRuntimeSettings = {
-  telegram: {
-    allowedChatIds: config.telegram.allowedChatIds,
-    analystChatIds: config.telegram.analystChatIds,
-    newsChatIds: config.telegram.newsChatIds,
-  },
-  feishu: {
-    analystRoutes: [],
-    generalAnalystSignalWebhookUrl: "",
-  },
-  analysts: {
-    configs: [],
-  },
-  execution: {
-    newsMode: "auto",
-    analystMode: "manual",
-    forwardOnlyMode: true,
-  },
-  ai: {
-    enabled: config.ai.enabled,
-    provider: config.ai.provider,
-    apiKey: config.ai.apiKey,
-    baseUrl: config.ai.baseUrl,
-    primaryModel: config.ai.primaryModel,
-    reviewModel: config.ai.reviewModel,
-    reviewEnabled: config.ai.reviewEnabled,
-    timeoutMs: config.ai.timeoutMs,
-  },
-  gate: {
-    mode: config.dryRun ? "dry_run" : "futures_testnet",
-    apiKey: config.gate.apiKey,
-    apiSecret: config.gate.apiSecret,
-    baseUrl: config.gate.baseUrl,
-  },
 };
 
 function getRuntimeSettings() {

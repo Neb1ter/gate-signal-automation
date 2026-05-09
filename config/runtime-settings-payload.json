@@ -1,0 +1,20 @@
+{
+  "telegram": {
+    "allowedChatIds": ["-1003758464445","-1003720685651","-1003093807993","-1003358734784","-1002953601978","-1003435926001","-1003162264989","-1003300637347","-1003044946193","-1003547241758"],
+    "analystChatIds": ["-1003093807993","-1003358734784","-1002953601978","-1003435926001","-1003162264989","-1003300637347","-1003044946193","-1003547241758"],
+    "newsChatIds": ["-1003758464445","-1003720685651"]
+  },
+  "feishu": {
+    "analystRoutes": [
+      {"chatId":"-1003093807993","displayName":"舒琴策略专线","webhookUrl":"https://open.feishu.cn/open-apis/bot/v2/hook/0b103705-e1ac-4931-b37c-8006b87d1367"},
+      {"chatId":"-1003358734784","displayName":"零下二度策略专线","webhookUrl":"https://open.feishu.cn/open-apis/bot/v2/hook/f8d116d3-1af9-4705-8fc3-82e09dcd31f3"},
+      {"chatId":"-1002953601978","displayName":"易盈社区策略专线","webhookUrl":"https://open.feishu.cn/open-apis/bot/v2/hook/75ef7739-f38a-4cec-b370-8695508c555d"},
+      {"chatId":"-1003435926001","displayName":"三马哥策略专线","webhookUrl":"https://open.feishu.cn/open-apis/bot/v2/hook/d8d61c48-9c79-474f-8da4-482391be3f3f"},
+      {"chatId":"-1003162264989","displayName":"洪七公策略专线","webhookUrl":"https://open.feishu.cn/open-apis/bot/v2/hook/163817bd-dc06-45ce-8ebe-be0ccb630db0"},
+      {"chatId":"-1003300637347","displayName":"btc乔乔策略专线","webhookUrl":"https://open.feishu.cn/open-apis/bot/v2/hook/374f15db-4324-4435-a622-7967634aef55"},
+      {"chatId":"-1003044946193","displayName":"大漂亮策略专线","webhookUrl":"https://open.feishu.cn/open-apis/bot/v2/hook/f2edc00c-65a6-4b26-bbdb-bbe0daaab6ac"},
+      {"chatId":"-1003547241758","displayName":"熬鹰资本策略专线","webhookUrl":"https://open.feishu.cn/open-apis/bot/v2/hook/e3416257-d128-46d0-a90a-d0f3ee526e88"}
+    ]
+  },
+  "execution": {"newsMode":"auto"}
+}
