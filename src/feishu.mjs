@@ -503,7 +503,6 @@ export class FeishuNotifier {
       return;
     }
 
-    const images = getSignalImages(signal);
     const legacyContent = [
       content,
       ...images.map((image) => image.publicUrl).filter(Boolean).map((url) => `[图片] ${url}`),
