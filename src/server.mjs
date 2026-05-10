@@ -85,7 +85,7 @@ const telegramRuntime = {
   identity: "",
   lastError: "",
 };
-const APP_BUILD = "forward-only-media-cleanup-v1";
+const APP_BUILD = "forward-thread-fix-v2";
 scheduleMediaCleanup();
 const safeConfiguredChatLabels = {
   "-1003758464445": "Get8.Pro",
@@ -599,6 +599,11 @@ function applyForwardOnlyMode(signal, runtimeSettings = getRuntimeSettings()) {
 
 async function notifySignal(signal) {
   const deliveryTargets = getSignalDeliveryTargets(signal);
+  if (!deliveryTargets.length) {
+    console.warn(`[notify] signal ${signal.id} has no delivery targets — check analystRoutes or FEISHU_WEBHOOK_URL`);
+    return;
+  }
+  console.log(`[notify] signal ${signal.id} → ${deliveryTargets.length} target(s): ${deliveryTargets.map(t => t.routeLabel || t.displayName || 'default').join(', ')}`);
   await Promise.all(
     deliveryTargets.map((deliveryOptions) =>
       feishuNotifier.sendSignalCard(signal, "", deliveryOptions),
@@ -647,6 +652,11 @@ function scheduleAnalystThreadProcessing(signal) {
     return enqueueSignalProcessing(signal.id);
   }
 
+  // Single-message threads don't need to wait for aggregation
+  if (Number(signal.threadMessageCount || 1) <= 1) {
+    return enqueueSignalProcessing(signal.id);
+  }
+
   const existingTimer = analystThreadTimers.get(threadId);
   if (existingTimer) {
     clearTimeout(existingTimer);
@@ -679,6 +689,7 @@ async function finalizeSignalProcessing(signalId) {
       signal.executionStatus = signal.executionStatus || "notify_only";
       signal.executionReason = "同一策略线程里已有更新消息，当前这条已由更新版本接管";
       store.upsertSignal(signal);
+      console.log(`[signal] ${signal.id} superseded by ${latestInThread.id} in thread ${signal.threadId}`);
       return signal;
     }
   }
@@ -820,7 +831,11 @@ async function processTelegramMessage(message) {
     });
   }
 
-  return processBaseSignal(baseSignal);
+  const result = await processBaseSignal(baseSignal);
+  if (result?.skipped) {
+    console.log(`[signal] skipped: ${result.reason}`);
+  }
+  return result;
 }
 
 async function startTelegramPolling() {

@@ -488,6 +488,12 @@ export class FeishuNotifier {
 
     const webhookUrl = this.resolveWebhookUrl(options.webhookUrl);
     const content = buildForwardText(signal);
+    const hasContent = Boolean(content);
+    const images = getSignalImages(signal);
+
+    if (!hasContent && !images.length) {
+      return;
+    }
 
     if (this.isBotWebhook(webhookUrl)) {
       if (content) {
