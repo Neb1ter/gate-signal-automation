@@ -270,6 +270,7 @@ export function renderAdminPage({
             String(route.chatId),
             {
               webhookUrl: String(route.webhookUrl || ""),
+              discordWebhookUrl: String(route.discordWebhookUrl || ""),
               displayName: resolveRouteDisplayName(String(route.chatId), route.displayName),
             },
           ]),
@@ -404,7 +405,7 @@ export function renderAdminPage({
           return;
         }
         analystRoutesWrap.innerHTML = analystIds.map((chatId) => {
-          const route = state.analystRoutes.get(chatId) || { webhookUrl: "", displayName: "" };
+          const route = state.analystRoutes.get(chatId) || { webhookUrl: "", discordWebhookUrl: "", displayName: "" };
           return [
             '<section class="route-card">',
             "<h3>" + escapeClientHtml(getChatTitle(chatId)) + "</h3>",
@@ -414,6 +415,11 @@ export function renderAdminPage({
             "<label>飞书显示名称</label>",
             '<input type="text" data-route-id="' + escapeClientHtml(chatId) + '" data-route-field="displayName" value="' + escapeClientHtml(resolveRouteDisplayName(chatId, route.displayName)) + '" placeholder="例如：三马哥策略专线" />',
             "<small>飞书收到消息时显示这个名称，用来和 Telegram 原群做区分。</small>",
+            "</div>",
+            "<div>",
+            "<label>Discord Webhook</label>",
+            '<input type="url" data-route-id="' + escapeClientHtml(chatId) + '" data-route-field="discordWebhookUrl" value="' + escapeClientHtml(route.discordWebhookUrl || "") + '" placeholder="https://discord.com/api/webhooks/..." />',
+            "<small>填了就同步转发到 Discord；留空则不发 Discord。</small>",
             "</div>",
             "<div>",
             "<label>专属飞书 Webhook</label>",
@@ -453,7 +459,7 @@ export function renderAdminPage({
           const routeId = target.dataset.routeId;
           const routeField = target.dataset.routeField;
           if (routeId && routeField) {
-            const current = state.analystRoutes.get(routeId) || { webhookUrl: "", displayName: "" };
+            const current = state.analystRoutes.get(routeId) || { webhookUrl: "", discordWebhookUrl: "", displayName: "" };
             current[routeField] = routeField === "displayName"
               ? resolveRouteDisplayName(routeId, target.value)
               : target.value;
@@ -485,9 +491,10 @@ export function renderAdminPage({
                   chatId,
                   displayName: resolveRouteDisplayName(chatId, route.displayName),
                   webhookUrl: String(route.webhookUrl || "").trim(),
+                  discordWebhookUrl: String(route.discordWebhookUrl || "").trim(),
                 };
               })
-              .filter((route) => route.displayName || route.webhookUrl),
+              .filter((route) => route.displayName || route.webhookUrl || route.discordWebhookUrl),
           },
           execution: {
             newsMode: state.newsMode,
@@ -515,10 +522,11 @@ export function renderAdminPage({
           state.analystRoutes = new Map(
             (saved.feishu?.analystRoutes || []).map((route) => [
               String(route.chatId),
-              {
-                webhookUrl: String(route.webhookUrl || ""),
-                displayName: resolveRouteDisplayName(String(route.chatId), route.displayName),
-              },
+            {
+              webhookUrl: String(route.webhookUrl || ""),
+              discordWebhookUrl: String(route.discordWebhookUrl || ""),
+              displayName: resolveRouteDisplayName(String(route.chatId), route.displayName),
+            },
             ]),
           );
           state.newsMode = saved.execution?.newsMode === "manual" ? "manual" : "auto";

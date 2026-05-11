@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { renderAdminPage } from "./admin-page.mjs";
 import { config, ensureRuntimeDirs, loadPlaybooks } from "./config.mjs";
+import { DiscordNotifier } from "./discord.mjs";
 import { FeishuNotifier } from "./feishu.mjs";
 import {
   buildAnalystPrivacyAlias,
@@ -78,6 +79,9 @@ const feishuNotifier = new FeishuNotifier({
   appId: config.feishu.appId,
   appSecret: config.feishu.appSecret,
 });
+const discordNotifier = new DiscordNotifier({
+  webhookUrl: config.discord.webhookUrl,
+});
 const telegramSource = createTelegramSource(config.telegram);
 const telegramRuntime = {
   sourceMode: config.telegram.sourceMode,
@@ -85,7 +89,7 @@ const telegramRuntime = {
   identity: "",
   lastError: "",
 };
-const APP_BUILD = "forward-thread-fix-v2";
+const APP_BUILD = "forward-only-discord-v1";
 scheduleMediaCleanup();
 const safeConfiguredChatLabels = {
   "-1003758464445": "Get8.Pro",
@@ -178,6 +182,7 @@ function getSignalDeliveryOptionsSafe(signal) {
     const cleanName = coerceCleanChineseText(signal.sourceName, signal.sourceName || "信号来源");
     return {
       webhookUrl: "",
+      discordWebhookUrl: "",
       displayName: cleanName,
       routeLabel: cleanName,
       forwardOnlyMode: isForwardOnlyMode(runtimeSettings),
@@ -195,6 +200,7 @@ function getSignalDeliveryOptionsSafe(signal) {
 
   return {
     webhookUrl: route?.webhookUrl || "",
+    discordWebhookUrl: route?.discordWebhookUrl || "",
     displayName:
       resolveAnalystRouteDisplayName(route?.displayName, {
         chatId: signal.chatId,
@@ -208,14 +214,14 @@ function getSignalDeliveryOptionsSafe(signal) {
     topicStyle: true,
   };
 }
-function dedupeDeliveryTargets(targets) {
+function dedupeDeliveryTargets(targets, resolveWebhookUrl) {
   const seen = new Set();
   const deduped = [];
   for (const target of targets) {
     if (!target) {
       continue;
     }
-    const resolved = feishuNotifier.resolveWebhookUrl(target.webhookUrl);
+    const resolved = resolveWebhookUrl(target);
     if (!resolved || seen.has(resolved)) {
       continue;
     }
@@ -225,8 +231,18 @@ function dedupeDeliveryTargets(targets) {
   return deduped;
 }
 
-function getSignalDeliveryTargets(signal) {
-  return dedupeDeliveryTargets([getSignalDeliveryOptionsSafe(signal)]);
+function getFeishuDeliveryTargets(signal) {
+  return dedupeDeliveryTargets(
+    [getSignalDeliveryOptionsSafe(signal)],
+    (target) => feishuNotifier.resolveWebhookUrl(target.webhookUrl),
+  );
+}
+
+function getDiscordDeliveryTargets(signal) {
+  return dedupeDeliveryTargets(
+    [getSignalDeliveryOptionsSafe(signal)],
+    (target) => discordNotifier.resolveWebhookUrl(target.discordWebhookUrl),
+  );
 }
 
 function extensionFromMimeType(mimeType = "") {
@@ -598,8 +614,12 @@ function applyForwardOnlyMode(signal, runtimeSettings = getRuntimeSettings()) {
 }
 
 async function notifySignal(signal) {
-  const deliveryTargets = getSignalDeliveryTargets(signal);
-  if (!deliveryTargets.length) {
+  const feishuTargets = getFeishuDeliveryTargets(signal);
+  const discordTargets = getDiscordDeliveryTargets(signal);
+  void feishuTargets;
+  void discordTargets;
+  return notifySignalToAllTargets(signal);
+  if (!feishuTargets.length && !discordTargets.length) {
     console.warn(`[notify] signal ${signal.id} has no delivery targets — check analystRoutes or FEISHU_WEBHOOK_URL`);
     return;
   }
@@ -611,9 +631,30 @@ async function notifySignal(signal) {
   );
 }
 
+async function notifySignalToAllTargets(signal) {
+  const feishuTargets = getFeishuDeliveryTargets(signal);
+  const discordTargets = getDiscordDeliveryTargets(signal);
+  if (!feishuTargets.length && !discordTargets.length) {
+    console.warn(`[notify] signal ${signal.id} has no delivery targets - check Feishu or Discord webhook settings`);
+    return;
+  }
+
+  console.log(
+    `[notify] signal ${signal.id} -> feishu:${feishuTargets.length} discord:${discordTargets.length} target(s)`,
+  );
+  await Promise.all([
+    ...feishuTargets.map((deliveryOptions) =>
+      feishuNotifier.sendSignalCard(signal, "", deliveryOptions),
+    ),
+    ...discordTargets.map((deliveryOptions) =>
+      discordNotifier.sendSignal(signal, deliveryOptions),
+    ),
+  ]);
+}
+
 async function safeNotifySignal(signal) {
   try {
-    await notifySignal(signal);
+    await notifySignalToAllTargets(signal);
   } catch (error) {
     console.warn(`[notify] signal ${signal.id} failed: ${error.message}`);
   }
@@ -1005,6 +1046,7 @@ const server = http.createServer(async (request, response) => {
         signalCount: store.listSignals().length,
         knownTelegramChats: store.listKnownTelegramChats().length,
         mediaRetentionDays: config.mediaRetentionDays,
+        discordConfigured: Boolean(config.discord.webhookUrl),
       });
       return;
     }
@@ -1022,6 +1064,7 @@ const server = http.createServer(async (request, response) => {
           configuredChatLabels: safeConfiguredChatLabels,
           signalCount: store.listSignals().length,
           defaultFeishuConfigured: Boolean(config.feishu.webhookUrl),
+          defaultDiscordConfigured: Boolean(config.discord.webhookUrl),
           telegramSourceMode: config.telegram.sourceMode,
           telegramRuntimeSummary: getTelegramRuntimeSummarySafe(),
           port: config.port,

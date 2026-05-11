@@ -19,6 +19,7 @@ function normalizeAnalystRoutes(value) {
     normalized.push({
       chatId,
       webhookUrl: String(item?.webhookUrl || "").trim(),
+      discordWebhookUrl: String(item?.discordWebhookUrl || "").trim(),
       displayName: String(item?.displayName || "").trim(),
     });
     seen.add(chatId);

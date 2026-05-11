@@ -110,6 +110,9 @@ export const config = {
     appId: process.env.FEISHU_APP_ID || "",
     appSecret: process.env.FEISHU_APP_SECRET || "",
   },
+  discord: {
+    webhookUrl: process.env.DISCORD_WEBHOOK_URL || "",
+  },
 };
 
 export function ensureRuntimeDirs() {
