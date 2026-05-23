@@ -613,24 +613,6 @@ function applyForwardOnlyMode(signal, runtimeSettings = getRuntimeSettings()) {
   return signal;
 }
 
-async function notifySignal(signal) {
-  const feishuTargets = getFeishuDeliveryTargets(signal);
-  const discordTargets = getDiscordDeliveryTargets(signal);
-  void feishuTargets;
-  void discordTargets;
-  return notifySignalToAllTargets(signal);
-  if (!feishuTargets.length && !discordTargets.length) {
-    console.warn(`[notify] signal ${signal.id} has no delivery targets — check analystRoutes or FEISHU_WEBHOOK_URL`);
-    return;
-  }
-  console.log(`[notify] signal ${signal.id} → ${deliveryTargets.length} target(s): ${deliveryTargets.map(t => t.routeLabel || t.displayName || 'default').join(', ')}`);
-  await Promise.all(
-    deliveryTargets.map((deliveryOptions) =>
-      feishuNotifier.sendSignalCard(signal, "", deliveryOptions),
-    ),
-  );
-}
-
 async function notifySignalToAllTargets(signal) {
   const feishuTargets = getFeishuDeliveryTargets(signal);
   const discordTargets = getDiscordDeliveryTargets(signal);

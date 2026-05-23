@@ -16,6 +16,7 @@ export function renderAdminPage({
   configuredChatLabels,
   signalCount,
   defaultFeishuConfigured,
+  defaultDiscordConfigured,
   telegramSourceMode,
   telegramRuntimeSummary,
   port,
@@ -27,6 +28,7 @@ export function renderAdminPage({
     configuredChatLabels,
     signalCount,
     defaultFeishuConfigured,
+    defaultDiscordConfigured,
     telegramSourceMode,
     telegramRuntimeSummary,
     port,
@@ -159,6 +161,11 @@ export function renderAdminPage({
           <div class="metric-label">飞书默认 Webhook</div>
           <div class="metric-value">${defaultFeishuConfigured ? "已配置" : "未配置"}</div>
           <div class="metric-hint">未单独配置路由的分析师群会回落到此</div>
+        </div>
+        <div class="card">
+          <div class="metric-label">Discord 默认 Webhook</div>
+          <div class="metric-value">${defaultDiscordConfigured ? "已配置" : "未配置"}</div>
+          <div class="metric-hint">未单独配置 Discord 路由时回落到此</div>
         </div>
       </div>
 
