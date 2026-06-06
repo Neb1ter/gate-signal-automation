@@ -182,7 +182,7 @@ function getSignalDeliveryOptionsSafe(signal) {
     const cleanName = coerceCleanChineseText(signal.sourceName, signal.sourceName || "信号来源");
     return {
       webhookUrl: "",
-      discordWebhookUrl: "",
+      discordWebhookUrl: config.discord.newsWebhookUrl || "",
       displayName: cleanName,
       routeLabel: cleanName,
       forwardOnlyMode: isForwardOnlyMode(runtimeSettings),

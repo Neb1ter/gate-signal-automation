@@ -112,6 +112,7 @@ export const config = {
   },
   discord: {
     webhookUrl: process.env.DISCORD_WEBHOOK_URL || "",
+    newsWebhookUrl: process.env.DISCORD_NEWS_WEBHOOK_URL || "https://discord.com/api/webhooks/1512742296288755714/VoylHMoaaM765b_TgiAbOyZQoeUSVvtbHv8bp__KWIOyTC5jKdLf6D3sMTnFtNLeDJKP",
   },
 };
 
