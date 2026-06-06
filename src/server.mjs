@@ -8,6 +8,7 @@ import { config, ensureRuntimeDirs, loadPlaybooks } from "./config.mjs";
 import { DiscordNotifier } from "./discord.mjs";
 import { FeishuNotifier } from "./feishu.mjs";
 import { NewsScraper } from "./news-scraper.mjs";
+import { PriceMonitor } from "./price-monitor.mjs";
 import {
   buildAnalystPrivacyAlias,
   createSignalFromPayload,
@@ -88,6 +89,12 @@ const newsScraper = new NewsScraper({
   intervalMin: 5,
 });
 newsScraper.start();
+
+const priceMonitor = new PriceMonitor({
+  webhookUrl: "https://discord.com/api/webhooks/1512744048904114209/kchs4hnuUJOSHUysMyGY8ZXZLfMWCT0V9vmuY_Ej9vgydSY7JT2tDUEFFil7FDSkMvz-",
+  pollSec: 30,
+});
+priceMonitor.start();
 const telegramSource = createTelegramSource(config.telegram);
 const telegramRuntime = {
   sourceMode: config.telegram.sourceMode,
