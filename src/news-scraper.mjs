@@ -5,18 +5,6 @@ import { config } from "./config.mjs";
 
 const FEEDS = [
   {
-    name: "CoinDesk",
-    url: "https://www.coindesk.com/arc/outboundfeeds/rss/",
-  },
-  {
-    name: "The Block",
-    url: "https://www.theblock.co/api/rss/feed",
-  },
-  {
-    name: "Decrypt",
-    url: "https://decrypt.co/feed",
-  },
-  {
     name: "吴说区块链",
     url: "https://wublock123.com/feed",
   },
