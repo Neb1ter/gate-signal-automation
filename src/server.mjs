@@ -7,6 +7,7 @@ import { renderAdminPage } from "./admin-page.mjs";
 import { config, ensureRuntimeDirs, loadPlaybooks } from "./config.mjs";
 import { DiscordNotifier } from "./discord.mjs";
 import { FeishuNotifier } from "./feishu.mjs";
+import { NewsScraper } from "./news-scraper.mjs";
 import {
   buildAnalystPrivacyAlias,
   createSignalFromPayload,
@@ -82,6 +83,11 @@ const feishuNotifier = new FeishuNotifier({
 const discordNotifier = new DiscordNotifier({
   webhookUrl: config.discord.webhookUrl,
 });
+const newsScraper = new NewsScraper({
+  webhookUrl: config.discord.newsWebhookUrl,
+  intervalMin: 5,
+});
+newsScraper.start();
 const telegramSource = createTelegramSource(config.telegram);
 const telegramRuntime = {
   sourceMode: config.telegram.sourceMode,
@@ -89,7 +95,7 @@ const telegramRuntime = {
   identity: "",
   lastError: "",
 };
-const APP_BUILD = "forward-only-discord-v1";
+const APP_BUILD = "forward-news-scraper-v1";
 scheduleMediaCleanup();
 const safeConfiguredChatLabels = {
   "-1003758464445": "交易资讯",
