@@ -9,6 +9,7 @@ import { DiscordNotifier } from "./discord.mjs";
 import { FeishuNotifier } from "./feishu.mjs";
 import { NewsScraper } from "./news-scraper.mjs";
 import { PriceMonitor } from "./price-monitor.mjs";
+import { KolScraper } from "./kol-scraper.mjs";
 import {
   buildAnalystPrivacyAlias,
   createSignalFromPayload,
@@ -95,6 +96,13 @@ const priceMonitor = new PriceMonitor({
   pollSec: 30,
 });
 priceMonitor.start();
+
+const kolScraper = new KolScraper({
+  discordWebhookUrl: config.discord.kolWebhookUrl,
+  feishuWebhookUrl: config.feishu.webhookUrl,
+  pollSec: 60,
+});
+kolScraper.start();
 const telegramSource = createTelegramSource(config.telegram);
 const telegramRuntime = {
   sourceMode: config.telegram.sourceMode,
@@ -102,7 +110,7 @@ const telegramRuntime = {
   identity: "",
   lastError: "",
 };
-const APP_BUILD = "forward-news-scraper-v1";
+const APP_BUILD = "forward-kol-scraper-v1";
 scheduleMediaCleanup();
 const safeConfiguredChatLabels = {
   "-1003758464445": "交易资讯",
