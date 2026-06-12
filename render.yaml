@@ -20,7 +20,7 @@ services:
       - key: DRY_RUN
         value: "true"
       - key: AUTO_EXECUTION_ENABLED
-        value: "true"
+        value: "false"
       - key: TELEGRAM_MODE
         value: polling
       - key: TELEGRAM_ALLOWED_CHAT_IDS
@@ -57,9 +57,49 @@ services:
         sync: false
       - key: FEISHU_APP_SECRET
         sync: false
+      - key: KOL_FEISHU_FALLBACK_WEBHOOK_URL
+        sync: false
+      - key: KOL_FEISHU_FALLBACK_SIGN_SECRET
+        sync: false
       - key: DISCORD_WEBHOOK_URL
         sync: false
       - key: DISCORD_NEWS_WEBHOOK_URL
         sync: false
       - key: DISCORD_KOL_WEBHOOK_URL
+        sync: false
+      - key: DISCORD_PRICE_WEBHOOK_URL
+        sync: false
+      - key: KOL_EMAIL
+        sync: false
+      - key: KOL_PASSWORD
+        sync: false
+      - key: KOL_SHUQIN_FEISHU_WEBHOOK_URL
+        sync: false
+      - key: KOL_SHUQIN_FEISHU_SIGN_SECRET
+        sync: false
+      - key: KOL_SHUQIN_DISCORD_WEBHOOK_URL
+        sync: false
+      - key: KOL_CHENGE_FEISHU_WEBHOOK_URL
+        sync: false
+      - key: KOL_CHENGE_FEISHU_SIGN_SECRET
+        sync: false
+      - key: KOL_CHENGE_DISCORD_WEBHOOK_URL
+        sync: false
+      - key: KOL_FENGGE_FEISHU_WEBHOOK_URL
+        sync: false
+      - key: KOL_FENGGE_FEISHU_SIGN_SECRET
+        sync: false
+      - key: KOL_FENGGE_DISCORD_WEBHOOK_URL
+        sync: false
+      - key: KOL_TIAFEILUO_FEISHU_WEBHOOK_URL
+        sync: false
+      - key: KOL_TIAFEILUO_FEISHU_SIGN_SECRET
+        sync: false
+      - key: KOL_TIAFEILUO_DISCORD_WEBHOOK_URL
+        sync: false
+      - key: KOL_DABIAOKE_FEISHU_WEBHOOK_URL
+        sync: false
+      - key: KOL_DABIAOKE_FEISHU_SIGN_SECRET
+        sync: false
+      - key: KOL_DABIAOKE_DISCORD_WEBHOOK_URL
         sync: false

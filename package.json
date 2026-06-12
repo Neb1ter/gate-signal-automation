@@ -14,10 +14,15 @@
     "remove:windows-startup": "powershell -ExecutionPolicy Bypass -File ./scripts/uninstall-windows-task.ps1",
     "docker:up": "docker compose -f docker-compose.cloud.yml up -d --build",
     "docker:down": "docker compose -f docker-compose.cloud.yml down",
-    "check": "node --check src/server.mjs && node --check src/admin-page.mjs && node --check src/config.mjs && node --check src/discord.mjs && node --check src/feishu.mjs && node --check src/signal-engine.mjs && node --check src/storage.mjs && node --check src/telegram.mjs && node --check src/text-clean.mjs && node --check scripts/telegram-user-login.mjs"
+    "check:delivery": "node scripts/check-kol-delivery.mjs",
+    "check:delivery:send": "node scripts/check-kol-delivery.mjs --send",
+    "check": "node --check src/server.mjs && node --check src/admin-page.mjs && node --check src/config.mjs && node --check src/discord.mjs && node --check src/feishu.mjs && node --check src/kol-scraper.mjs && node --check src/signal-engine.mjs && node --check src/storage.mjs && node --check src/telegram.mjs && node --check src/text-clean.mjs && node --check scripts/telegram-user-login.mjs && node --check scripts/check-kol-delivery.mjs"
   },
   "dependencies": {
+    "feishu-cli": "^0.2.0",
+    "https-proxy-agent": "^9.1.0",
     "input": "^1.0.1",
+    "playwright": "^1.60.0",
     "telegram": "^2.26.22"
   }
 }

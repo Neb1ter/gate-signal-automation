@@ -92,14 +92,17 @@ const newsScraper = new NewsScraper({
 newsScraper.start();
 
 const priceMonitor = new PriceMonitor({
-  webhookUrl: "https://discord.com/api/webhooks/1512744048904114209/kchs4hnuUJOSHUysMyGY8ZXZLfMWCT0V9vmuY_Ej9vgydSY7JT2tDUEFFil7FDSkMvz-",
+  webhookUrl: config.discord.priceWebhookUrl,
   pollSec: 30,
 });
-priceMonitor.start();
+if (config.discord.priceWebhookUrl) {
+  priceMonitor.start();
+} else {
+  console.log("[price-monitor] disabled: DISCORD_PRICE_WEBHOOK_URL is not configured");
+}
 
 const kolScraper = new KolScraper({
-  discordWebhookUrl: config.discord.kolWebhookUrl,
-  feishuWebhookUrl: config.feishu.webhookUrl,
+  routes: config.kol?.routes || [],
   pollSec: 60,
 });
 kolScraper.start();
@@ -1050,6 +1053,11 @@ const server = http.createServer(async (request, response) => {
         knownTelegramChats: store.listKnownTelegramChats().length,
         mediaRetentionDays: config.mediaRetentionDays,
         discordConfigured: Boolean(config.discord.webhookUrl),
+        kol: {
+          mode: kolScraper.mode,
+          activeRoutes: kolScraper.activeRoutes.map((r) => r.authorName),
+          stats: kolScraper.getStats(),
+        },
       });
       return;
     }

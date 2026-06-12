@@ -17,7 +17,7 @@ function truncateText(text, limit = 1800) {
   return `${value.slice(0, Math.max(0, limit - 10))}\n[已截断]`;
 }
 
-function sanitizeForwardText(text) {
+export function sanitizeForwardText(text) {
   const masked = String(text || "")
     .replace(/https?:\/\/\S+/gi, "")
     .replace(/\b(?:t\.me|telegram\.me|x\.com|twitter\.com|youtube\.com|youtu\.be)\/\S+/gi, "")

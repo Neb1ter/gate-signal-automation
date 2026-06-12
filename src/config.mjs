@@ -112,8 +112,52 @@ export const config = {
   },
   discord: {
     webhookUrl: process.env.DISCORD_WEBHOOK_URL || "",
-    newsWebhookUrl: process.env.DISCORD_NEWS_WEBHOOK_URL || "https://discord.com/api/webhooks/1512742296288755714/VoylHMoaaM765b_TgiAbOyZQoeUSVvtbHv8bp__KWIOyTC5jKdLf6D3sMTnFtNLeDJKP",
+    newsWebhookUrl: process.env.DISCORD_NEWS_WEBHOOK_URL || "",
     kolWebhookUrl: process.env.DISCORD_KOL_WEBHOOK_URL || "",
+    priceWebhookUrl: process.env.DISCORD_PRICE_WEBHOOK_URL || "",
+  },
+  kol: {
+    email: process.env.KOL_EMAIL || "",
+    password: process.env.KOL_PASSWORD || "",
+    feishuFallbackWebhookUrl: process.env.KOL_FEISHU_FALLBACK_WEBHOOK_URL || "",
+    feishuFallbackSignSecret: process.env.KOL_FEISHU_FALLBACK_SIGN_SECRET || "",
+    routes: [
+      {
+        authorName: "舒琴",
+        kolChannelId: "1444962376066793513",
+        feishuWebhookUrl: process.env.KOL_SHUQIN_FEISHU_WEBHOOK_URL || "",
+        feishuSignSecret: process.env.KOL_SHUQIN_FEISHU_SIGN_SECRET || "",
+        discordWebhookUrl: process.env.KOL_SHUQIN_DISCORD_WEBHOOK_URL || "",
+      },
+      {
+        authorName: "陈哥",
+        kolChannelId: "1444964071979089990",
+        feishuWebhookUrl: process.env.KOL_CHENGE_FEISHU_WEBHOOK_URL || "",
+        feishuSignSecret: process.env.KOL_CHENGE_FEISHU_SIGN_SECRET || "",
+        discordWebhookUrl: process.env.KOL_CHENGE_DISCORD_WEBHOOK_URL || "",
+      },
+      {
+        authorName: "峰哥",
+        kolChannelId: "1444963929393729686",
+        feishuWebhookUrl: process.env.KOL_FENGGE_FEISHU_WEBHOOK_URL || "",
+        feishuSignSecret: process.env.KOL_FENGGE_FEISHU_SIGN_SECRET || "",
+        discordWebhookUrl: process.env.KOL_FENGGE_DISCORD_WEBHOOK_URL || "",
+      },
+      {
+        authorName: "提阿非罗",
+        kolChannelId: "1320436859477819433",
+        feishuWebhookUrl: process.env.KOL_TIAFEILUO_FEISHU_WEBHOOK_URL || "",
+        feishuSignSecret: process.env.KOL_TIAFEILUO_FEISHU_SIGN_SECRET || "",
+        discordWebhookUrl: process.env.KOL_TIAFEILUO_DISCORD_WEBHOOK_URL || "",
+      },
+      {
+        authorName: "大镖客",
+        kolChannelId: "1444962339743989843",
+        feishuWebhookUrl: process.env.KOL_DABIAOKE_FEISHU_WEBHOOK_URL || "",
+        feishuSignSecret: process.env.KOL_DABIAOKE_FEISHU_SIGN_SECRET || "",
+        discordWebhookUrl: process.env.KOL_DABIAOKE_DISCORD_WEBHOOK_URL || "",
+      },
+    ],
   },
 };
 

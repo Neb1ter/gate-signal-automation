@@ -1,5 +1,6 @@
 .env
 .env.local
+config/kol-webhooks.env
 data/
 logs/
 *.log
