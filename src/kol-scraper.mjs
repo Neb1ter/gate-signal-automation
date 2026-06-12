@@ -1033,13 +1033,24 @@ export class KolScraper {
    * Feishu / Discord.  Bypasses dedup / lastSeen so the forwarding
    * pipeline is exercised with live data.  Admin-only.
    */
-  async testSend({ only = [], skip = ["舒琴"], limit = 1, sendDiscord = false, sendFeishu = true } = {}) {
-    const onlySet = new Set(only.filter(Boolean));
-    const skipSet = new Set(skip.filter(Boolean));
+  async testSend({ only = [], skip = [], limit = 1, sendDiscord = false, sendFeishu = true } = {}) {
+    // Use channel IDs for reliable filtering (immune to Unicode encoding issues).
+    const SHUQIN_CHANNEL = "1444962376066793513";
+    const hardSkipIds = new Set([SHUQIN_CHANNEL]);
+
+    // Resolve name-based only/skip to channel IDs.
+    const nameToId = new Map(this.activeRoutes.map((r) => [r.authorName, r.kolChannelId]));
+    for (const name of skip || []) {
+      const id = nameToId.get(String(name || "").trim());
+      if (id) hardSkipIds.add(id);
+    }
+    const onlyIds = new Set(
+      (only || []).map((name) => nameToId.get(String(name || "").trim())).filter(Boolean),
+    );
 
     const targets = this.activeRoutes.filter((r) => {
-      if (skipSet.has(r.authorName)) return false;
-      if (onlySet.size && !onlySet.has(r.authorName)) return false;
+      if (hardSkipIds.has(r.kolChannelId)) return false;
+      if (onlyIds.size && !onlyIds.has(r.kolChannelId)) return false;
       return true;
     });
 
