@@ -83,8 +83,8 @@ async function proxyFetch(url, options = {}) {
     headers["Content-Length"] = Buffer.byteLength(body);
   }
 
-  // FormData/URLSearchParams can't go through native https module — use native fetch
-  // These are used for Feishu image upload which doesn't need proxy
+  // FormData/URLSearchParams can't go through native https module — use native fetch.
+  // Render does not need the local proxy for Feishu image upload.
   if (isFormData || isURLSearchParams) {
     return fetch(url, { ...options, headers: { ...(options.headers || {}), ...headers } });
   }
@@ -398,6 +398,7 @@ async function uploadFeishuImageFromUrl(imageUrl) {
     throw new Error(`Feishu image upload failed: ${data?.msg || resp.status}`);
   }
 
+  console.log(`[kol] Feishu image uploaded: ${imageKey}`);
   feishuImageKeyCache.set(imageUrl, imageKey);
   return imageKey;
 }
@@ -463,9 +464,9 @@ async function forwardImageToFeishu(webhookUrl, imageUrl, signSecret = "") {
       return true;
     }
   } catch (error) {
-    console.warn(`[kol] Feishu image upload failed, falling back to link: ${error.message}`);
+    console.warn(`[kol] Feishu image upload failed: ${error.message}`);
   }
-  return postFeishuImageLink(webhookUrl, imageUrl, signSecret);
+  return false;
 }
 
 function getFeishuFallbackTarget(primaryWebhookUrl = "") {
