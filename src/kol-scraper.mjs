@@ -1033,26 +1033,46 @@ export class KolScraper {
    * Feishu / Discord.  Bypasses dedup / lastSeen so the forwarding
    * pipeline is exercised with live data.  Admin-only.
    */
-  async testSend({ only = [], skip = [], limit = 1, sendDiscord = false, sendFeishu = true } = {}) {
-    // Use channel IDs for reliable filtering (immune to Unicode encoding issues).
-    const SHUQIN_CHANNEL = "1444962376066793513";
-    const hardSkipIds = new Set([SHUQIN_CHANNEL]);
+  async testSend({ only = [], skip = [], onlyIds = [], skipIds = [], limit = 1, sendDiscord = false, sendFeishu = true } = {}) {
+    // Channel IDs are the reliable filter (immune to Unicode encoding in JSON).
+    // Name-based only/skip are resolved below as best-effort convenience.
+    const SHUQIN_ID = "1444962376066793513";
 
-    // Resolve name-based only/skip to channel IDs.
+    // Build name→id lookup from active routes.
     const nameToId = new Map(this.activeRoutes.map((r) => [r.authorName, r.kolChannelId]));
-    for (const name of skip || []) {
-      const id = nameToId.get(String(name || "").trim());
-      if (id) hardSkipIds.add(id);
+    const idToName = new Map(this.activeRoutes.map((r) => [r.kolChannelId, r.authorName]));
+
+    // Resolve names to IDs (best-effort — may fail for Unicode names in JSON).
+    function resolveIds(names) {
+      const ids = [];
+      for (const raw of names || []) {
+        const s = String(raw || "").trim();
+        if (!s) continue;
+        // If it looks like a channel ID (17+ digits), use directly.
+        if (/^\d{17,}$/.test(s)) { ids.push(s); continue; }
+        // Otherwise try name lookup.
+        const id = nameToId.get(s);
+        if (id) ids.push(id);
+      }
+      return ids;
     }
-    const onlyIds = new Set(
-      (only || []).map((name) => nameToId.get(String(name || "").trim())).filter(Boolean),
-    );
+
+    const skipIdSet = new Set([SHUQIN_ID, ...resolveIds(skip), ...(skipIds || [])]);
+    const onlyIdSet = new Set([...resolveIds(only), ...(onlyIds || [])]);
+
+    // Log what we resolved for debugging.
+    if (only.length || onlyIds.length) {
+      console.log(`[kol:testSend] onlyIds: ${[...onlyIdSet].map((id) => idToName.get(id) || id).join(", ")}`);
+    }
+    console.log(`[kol:testSend] skipIds: ${[...skipIdSet].map((id) => idToName.get(id) || id).join(", ")}`);
 
     const targets = this.activeRoutes.filter((r) => {
-      if (hardSkipIds.has(r.kolChannelId)) return false;
-      if (onlyIds.size && !onlyIds.has(r.kolChannelId)) return false;
+      if (skipIdSet.has(r.kolChannelId)) return false;
+      if (onlyIdSet.size && !onlyIdSet.has(r.kolChannelId)) return false;
       return true;
     });
+
+    console.log(`[kol:testSend] targets: ${targets.map((r) => r.authorName).join(", ")}`);
 
     const results = [];
 
