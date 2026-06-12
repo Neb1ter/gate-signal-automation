@@ -58,9 +58,9 @@ services:
       - key: FEISHU_APP_SECRET
         value: "hXLlHMdxb03eTTDEufC9wduJh6y0OfOt"
       - key: KOL_FEISHU_FALLBACK_WEBHOOK_URL
-        value: "https://open.feishu.cn/open-apis/bot/v2/hook/0b103705-e1ac-4931-b37c-8006b87d1367"
+        value: ""
       - key: KOL_FEISHU_FALLBACK_SIGN_SECRET
-        sync: false
+        value: ""
       - key: DISCORD_WEBHOOK_URL
         sync: false
       - key: DISCORD_NEWS_WEBHOOK_URL

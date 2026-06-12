@@ -469,58 +469,18 @@ async function forwardImageToFeishu(webhookUrl, imageUrl, signSecret = "") {
   return false;
 }
 
-function getFeishuFallbackTarget(primaryWebhookUrl = "") {
-  const fallbackUrl = String(config.kol?.feishuFallbackWebhookUrl || "").trim();
-  if (!fallbackUrl || fallbackUrl === String(primaryWebhookUrl || "").trim()) {
-    return null;
-  }
-  // Safety: never fallback into another KOL's primary group.
-  // If the fallback URL is the same as any route's feishuWebhookUrl and that
-  // route is not the current one, block the fallback to avoid cross-posting.
-  const ownerRoute = config.kol?.routes?.find(
-    (r) => r.feishuWebhookUrl === fallbackUrl && r.feishuWebhookUrl !== primaryWebhookUrl,
-  );
-  if (ownerRoute) {
-    console.warn(
-      `[kol] Fallback blocked: target URL belongs to ${ownerRoute.authorName}, not a dedicated fallback group`,
-    );
-    return null;
-  }
-  return {
-    webhookUrl: fallbackUrl,
-    signSecret: config.kol?.feishuFallbackSignSecret || "",
-  };
+// Each KOL only forwards to their own group.  No cross-posting fallback.
+// If a delivery fails it is logged; no message is ever redirected to
+// another KOL's Feishu group.
+
+async function postFeishuTextToRoute(route, card) {
+  if (!route?.feishuWebhookUrl) return false;
+  return postToFeishu(route.feishuWebhookUrl, card, route.feishuSignSecret);
 }
 
-async function postToFeishuWithFallback(route, card) {
-  if (!route?.feishuWebhookUrl) return { ok: false, usedFallback: false };
-  if (await postToFeishu(route.feishuWebhookUrl, card, route.feishuSignSecret)) {
-    return { ok: true, usedFallback: false };
-  }
-
-  const fallback = getFeishuFallbackTarget(route.feishuWebhookUrl);
-  if (!fallback) return { ok: false, usedFallback: false };
-
-  const fallbackCard = {
-    ...card,
-    title: `${card.title}｜备用`,
-    content: `[主飞书群发送失败，已转入备用]\n${card.content}`,
-  };
-  const ok = await postToFeishu(fallback.webhookUrl, fallbackCard, fallback.signSecret);
-  return { ok, usedFallback: ok };
-}
-
-async function forwardImageToFeishuWithFallback(route, imageUrl) {
-  if (!route?.feishuWebhookUrl || !imageUrl) return { ok: false, usedFallback: false };
-  if (await forwardImageToFeishu(route.feishuWebhookUrl, imageUrl, route.feishuSignSecret)) {
-    return { ok: true, usedFallback: false };
-  }
-
-  const fallback = getFeishuFallbackTarget(route.feishuWebhookUrl);
-  if (!fallback) return { ok: false, usedFallback: false };
-
-  const ok = await forwardImageToFeishu(fallback.webhookUrl, imageUrl, fallback.signSecret);
-  return { ok, usedFallback: ok };
+async function forwardFeishuImageToRoute(route, imageUrl) {
+  if (!route?.feishuWebhookUrl || !imageUrl) return false;
+  return forwardImageToFeishu(route.feishuWebhookUrl, imageUrl, route.feishuSignSecret);
 }
 
 // ── formatting (denoise only, no restructure) ──────────────
@@ -768,7 +728,6 @@ export class KolScraper {
       discordImageSent: 0,
       feishuSent: 0,
       feishuImageSent: 0,
-      feishuFallbackSent: 0,
       failures: 0,
     };
   }
@@ -854,13 +813,9 @@ export class KolScraper {
           else this.stats.failures++;
         }
         if (route.feishuWebhookUrl) {
-          const result = await forwardImageToFeishuWithFallback(route, imageUrl);
-          if (result.ok) {
-            this.stats.feishuImageSent++;
-            if (result.usedFallback) this.stats.feishuFallbackSent++;
-          } else {
-            this.stats.failures++;
-          }
+          const ok = await forwardFeishuImageToRoute(route, imageUrl);
+          if (ok) this.stats.feishuImageSent++;
+          else this.stats.failures++;
         }
       }
     }
@@ -872,13 +827,9 @@ export class KolScraper {
         content: cleaned || "(无正文)",
         channel: msg.channel_name || "",
       };
-      const result = await postToFeishuWithFallback(route, card);
-      if (result.ok) {
-        this.stats.feishuSent++;
-        if (result.usedFallback) this.stats.feishuFallbackSent++;
-      } else {
-        this.stats.failures++;
-      }
+      const ok = await postFeishuTextToRoute(route, card);
+      if (ok) this.stats.feishuSent++;
+      else this.stats.failures++;
     }
 
     const imgTag = msg.attachments?.length ? ` +${msg.attachments.length}📎` : "";
@@ -1025,7 +976,6 @@ export class KolScraper {
       mode: this.mode,
       routesCount: this.activeRoutes.length,
       feishuImageMode: canUploadFeishuImages() ? "upload" : "link",
-      feishuFallbackConfigured: Boolean(config.kol?.feishuFallbackWebhookUrl),
     };
   }
 
@@ -1108,8 +1058,8 @@ export class KolScraper {
             content: cleaned,
             channel: msg.channel_name || "",
           };
-          const r = await postToFeishuWithFallback(route, card);
-          entry.feishuText = r.ok ? (r.usedFallback ? "fallback" : "ok") : "failed";
+          const ok = await postFeishuTextToRoute(route, card);
+          entry.feishuText = ok ? "ok" : "failed";
         } else if (sendFeishu && !route.feishuWebhookUrl) {
           entry.feishuText = "no webhook";
         } else if (sendFeishu && !cleaned) {
@@ -1125,8 +1075,8 @@ export class KolScraper {
               imgOut.push("no-url");
               continue;
             }
-            const r = await forwardImageToFeishuWithFallback(route, imageUrl);
-            imgOut.push(r.ok ? (r.usedFallback ? "fallback" : "native") : "failed");
+            const ok = await forwardFeishuImageToRoute(route, imageUrl);
+            imgOut.push(ok ? "native" : "failed");
           }
           entry.feishuImage = imgOut.join(", ");
         } else if (sendFeishu && !msg.attachments?.length) {

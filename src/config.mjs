@@ -119,8 +119,9 @@ export const config = {
   kol: {
     email: process.env.KOL_EMAIL || "",
     password: process.env.KOL_PASSWORD || "",
-    feishuFallbackWebhookUrl: process.env.KOL_FEISHU_FALLBACK_WEBHOOK_URL || "",
-    feishuFallbackSignSecret: process.env.KOL_FEISHU_FALLBACK_SIGN_SECRET || "",
+    // Fallback removed — each KOL only forwards to their own group.
+    feishuFallbackWebhookUrl: "",
+    feishuFallbackSignSecret: "",
     routes: [
       {
         authorName: "舒琴",
