@@ -277,11 +277,9 @@ function findAttachmentsForSignal(rawMessages, signal) {
  * kol.lysq.cc proxy URLs also work.
  */
 function buildImageUrl(att) {
-  // Prefer Discord CDN (strip expiry params — Discord servers can still fetch it)
+  // Prefer original Discord CDN URL.  The signed ex/is/hm query params are
+  // often required for download, so do not strip them.
   const cdnUrl = att.originalUrl || "";
-  if (cdnUrl && cdnUrl.includes("cdn.discordapp.com")) {
-    return cdnUrl.replace(/[?&]ex=[^&]+/g, "").replace(/[?&]is=[^&]+/g, "").replace(/[?&]hm=[^&]+/g, "");
-  }
   if (cdnUrl) return cdnUrl;
 
   // Fallback: kol.lysq.cc proxy URL
@@ -292,6 +290,60 @@ function buildImageUrl(att) {
     return `https://kol.lysq.cc/v1/api/files/discord/attachments/${msgId}_${attId}.${ext}`;
   }
   return "";
+}
+
+function normalizeImageUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  return value;
+}
+
+function extractImageUrlMatchesFromText(text) {
+  const value = String(text || "");
+  const urls = value.match(/https?:\/\/[^\s<>"')\]]+/gi) || [];
+  return urls
+    .map((url) => url.replace(/[，。；、]+$/g, ""))
+    .filter((url) =>
+      /\.(?:png|jpe?g|webp|gif)(?:[?#][^\s]*)?$/i.test(url) ||
+      /cdn\.discordapp\.com\/attachments\//i.test(url) ||
+      /\/files\/discord\/attachments\//i.test(url),
+    )
+    .map((url) => ({ raw: url, normalized: normalizeImageUrl(url) }));
+}
+
+function extractImageUrlsFromText(text) {
+  return extractImageUrlMatchesFromText(text).map((item) => item.normalized);
+}
+
+function stripImageUrlsFromText(text) {
+  const imageUrls = extractImageUrlMatchesFromText(text);
+  if (!imageUrls.length) return String(text || "");
+
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => {
+      let next = line;
+      for (const imageUrl of imageUrls) {
+        next = next.replace(imageUrl.raw, "");
+        next = next.replace(imageUrl.normalized, "");
+      }
+      return next
+        .replace(/^\s*\[?图片\]?\s*[:：]?\s*$/i, "")
+        .replace(/^\s*\[?图片\]?\s*[:：]?\s*/i, "")
+        .trimEnd();
+    })
+    .filter((line) => line.trim())
+    .join("\n");
+}
+
+function getMessageImageUrls(msg) {
+  const urls = [];
+  for (const att of Array.isArray(msg?.attachments) ? msg.attachments : []) {
+    const imageUrl = buildImageUrl(att);
+    if (imageUrl) urls.push(imageUrl);
+  }
+  urls.push(...extractImageUrlsFromText(extractRawText(msg)));
+  return [...new Set(urls.map(normalizeImageUrl).filter(Boolean))];
 }
 
 /**
@@ -497,6 +549,10 @@ function extractRawText(msg) {
   if (om && typeof om === "object" && om.content) return om.content;
   if (typeof om === "string" && om) return om;
   return msg.text || msg.content || msg.raw_text || "";
+}
+
+function extractCleanableText(msg) {
+  return stripImageUrlsFromText(extractRawText(msg));
 }
 
 function formatDiscordSignal(signal, routeLabel) {
@@ -789,8 +845,9 @@ export class KolScraper {
       return;
     }
     const label = route.authorName;
-    const rawText = extractRawText(msg);
+    const rawText = extractCleanableText(msg);
     const cleaned = rawText ? sanitizeForwardText(rawText) : "";
+    const imageUrls = getMessageImageUrls(msg);
 
     // 1. Post text to Discord
     if (route.discordWebhookUrl && cleaned) {
@@ -801,12 +858,8 @@ export class KolScraper {
     }
 
     // 2. Post images
-    if (msg.attachments?.length) {
-      for (const att of msg.attachments) {
-        const imageUrl = buildImageUrl(att);
-        if (!imageUrl) {
-          continue;
-        }
+    if (imageUrls.length) {
+      for (const imageUrl of imageUrls) {
         if (route.discordWebhookUrl) {
           const ok = await forwardImageToDiscord(route.discordWebhookUrl, imageUrl);
           if (ok) this.stats.discordImageSent++;
@@ -832,7 +885,7 @@ export class KolScraper {
       else this.stats.failures++;
     }
 
-    const imgTag = msg.attachments?.length ? ` +${msg.attachments.length}📎` : "";
+    const imgTag = imageUrls.length ? ` +${imageUrls.length}📎` : "";
     console.log(`[kol] ${label} → discord:${route.discordWebhookUrl ? "✓" : "✗"} feishu:${route.feishuWebhookUrl ? "✓" : "✗"}${imgTag}`);
   }
 
@@ -1048,8 +1101,9 @@ export class KolScraper {
 
         const msg = messages[0];
         entry.messageId = msg.message_id || "";
-        const rawText = extractRawText(msg);
+        const rawText = extractCleanableText(msg);
         const cleaned = rawText ? sanitizeForwardText(rawText) : "";
+        const imageUrls = getMessageImageUrls(msg);
 
         // ── Feishu text ──
         if (sendFeishu && route.feishuWebhookUrl && cleaned) {
@@ -1067,19 +1121,14 @@ export class KolScraper {
         }
 
         // ── Feishu images ──
-        if (sendFeishu && route.feishuWebhookUrl && msg.attachments?.length) {
+        if (sendFeishu && route.feishuWebhookUrl && imageUrls.length) {
           const imgOut = [];
-          for (const att of msg.attachments) {
-            const imageUrl = buildImageUrl(att);
-            if (!imageUrl) {
-              imgOut.push("no-url");
-              continue;
-            }
+          for (const imageUrl of imageUrls) {
             const ok = await forwardFeishuImageToRoute(route, imageUrl);
             imgOut.push(ok ? "native" : "failed");
           }
           entry.feishuImage = imgOut.join(", ");
-        } else if (sendFeishu && !msg.attachments?.length) {
+        } else if (sendFeishu && !imageUrls.length) {
           entry.feishuImage = "no attachments";
         }
 
@@ -1093,14 +1142,9 @@ export class KolScraper {
         }
 
         // ── Discord images ──
-        if (sendDiscord && route.discordWebhookUrl && msg.attachments?.length) {
+        if (sendDiscord && route.discordWebhookUrl && imageUrls.length) {
           const imgOut = [];
-          for (const att of msg.attachments) {
-            const imageUrl = buildImageUrl(att);
-            if (!imageUrl) {
-              imgOut.push("no-url");
-              continue;
-            }
+          for (const imageUrl of imageUrls) {
             const ok = await forwardImageToDiscord(route.discordWebhookUrl, imageUrl);
             imgOut.push(ok ? "ok" : "failed");
           }
