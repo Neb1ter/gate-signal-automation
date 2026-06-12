@@ -54,7 +54,7 @@ services:
       - key: FEISHU_WEBHOOK_URL
         sync: false
       - key: FEISHU_APP_ID
-        sync: false
+        value: "cli_aa89d05ff9b89bec"
       - key: FEISHU_APP_SECRET
         value: "hXLlHMdxb03eTTDEufC9wduJh6y0OfOt"
       - key: KOL_FEISHU_FALLBACK_WEBHOOK_URL

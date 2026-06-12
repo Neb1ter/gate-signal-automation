@@ -69,15 +69,24 @@ async function proxyFetch(url, options = {}) {
   const headers = { ...(options.headers || {}) };
   let body = options.body || null;
 
-  // Serialize body if needed
-  if (body && typeof body !== "string") {
+  // Serialize body if needed. Skip FormData/URLSearchParams — pass through to native fetch.
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  const isURLSearchParams = typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams;
+
+  if (body && !isFormData && !isURLSearchParams && typeof body !== "string") {
     body = JSON.stringify(body);
     if (!headers["Content-Type"]) {
       headers["Content-Type"] = "application/json";
     }
   }
-  if (body) {
+  if (body && !isFormData && !isURLSearchParams) {
     headers["Content-Length"] = Buffer.byteLength(body);
+  }
+
+  // FormData/URLSearchParams can't go through native https module — use native fetch
+  // These are used for Feishu image upload which doesn't need proxy
+  if (isFormData || isURLSearchParams) {
+    return fetch(url, { ...options, headers: { ...(options.headers || {}), ...headers } });
   }
 
   return new Promise((resolve, reject) => {
@@ -378,7 +387,7 @@ async function uploadFeishuImageFromUrl(imageUrl) {
   form.append("image_type", "message");
   form.append("image", new Blob([buffer], { type: mimeType }), fileName);
 
-  const resp = await fetch(FEISHU_IMAGE_URL, {
+  const resp = await proxyFetch(FEISHU_IMAGE_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form,
@@ -462,6 +471,18 @@ async function forwardImageToFeishu(webhookUrl, imageUrl, signSecret = "") {
 function getFeishuFallbackTarget(primaryWebhookUrl = "") {
   const fallbackUrl = String(config.kol?.feishuFallbackWebhookUrl || "").trim();
   if (!fallbackUrl || fallbackUrl === String(primaryWebhookUrl || "").trim()) {
+    return null;
+  }
+  // Safety: never fallback into another KOL's primary group.
+  // If the fallback URL is the same as any route's feishuWebhookUrl and that
+  // route is not the current one, block the fallback to avoid cross-posting.
+  const ownerRoute = config.kol?.routes?.find(
+    (r) => r.feishuWebhookUrl === fallbackUrl && r.feishuWebhookUrl !== primaryWebhookUrl,
+  );
+  if (ownerRoute) {
+    console.warn(
+      `[kol] Fallback blocked: target URL belongs to ${ownerRoute.authorName}, not a dedicated fallback group`,
+    );
     return null;
   }
   return {
