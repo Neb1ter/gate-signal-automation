@@ -276,20 +276,19 @@ function findAttachmentsForSignal(rawMessages, signal) {
  * Discord CDN URLs work for Discord's own image proxy when ?ex= is stripped.
  * kol.lysq.cc proxy URLs also work.
  */
-function buildImageUrl(att) {
-  // Prefer original Discord CDN URL.  The signed ex/is/hm query params are
-  // often required for download, so do not strip them.
-  const cdnUrl = att.originalUrl || "";
-  if (cdnUrl) return cdnUrl;
+function buildImageUrls(att) {
+  const urls = [];
+  const cdnUrl = att?.originalUrl || "";
+  if (cdnUrl) urls.push(cdnUrl);
 
-  // Fallback: kol.lysq.cc proxy URL
-  const msgId = att.messageId || "";
-  const attId = att.attachmentId || "";
-  const ext = (att.originalName || "image.png").split(".").pop();
+  const msgId = att?.messageId || "";
+  const attId = att?.attachmentId || "";
+  const ext = (att?.originalName || "image.png").split(".").pop();
   if (msgId && attId) {
-    return `https://kol.lysq.cc/v1/api/files/discord/attachments/${msgId}_${attId}.${ext}`;
+    urls.push(`https://kol.lysq.cc/v1/api/files/discord/attachments/${msgId}_${attId}.${ext}`);
   }
-  return "";
+
+  return [...new Set(urls.map(normalizeImageUrl).filter(Boolean))];
 }
 
 function normalizeImageUrl(url) {
@@ -337,39 +336,95 @@ function stripImageUrlsFromText(text) {
 }
 
 function getMessageImageUrls(msg) {
+  return getMessageImages(msg).flatMap((image) => image.urls);
+}
+
+function getMessageImages(msg) {
+  const images = [];
   const urls = [];
   for (const att of Array.isArray(msg?.attachments) ? msg.attachments : []) {
-    const imageUrl = buildImageUrl(att);
-    if (imageUrl) urls.push(imageUrl);
+    const candidates = buildImageUrls(att);
+    if (candidates.length) {
+      images.push({
+        key: candidates[0],
+        urls: candidates,
+        fileName: att.originalName || "kol-image.jpg",
+      });
+      urls.push(...candidates);
+    }
   }
-  urls.push(...extractImageUrlsFromText(extractRawText(msg)));
-  return [...new Set(urls.map(normalizeImageUrl).filter(Boolean))];
+
+  for (const url of extractImageUrlsFromText(extractRawText(msg))) {
+    if (!urls.includes(url)) {
+      images.push({
+        key: url,
+        urls: [url],
+        fileName: path.basename(new URL(url).pathname) || "kol-image.jpg",
+      });
+      urls.push(url);
+    }
+  }
+
+  return images;
 }
 
 /**
- * Forward an image to Discord via embed.
+ * Forward an image to Discord by uploading the binary file. This keeps the
+ * final Discord message independent of expiring kol/Discord CDN URLs.
  */
-async function forwardImageToDiscord(webhookUrl, imageUrl) {
-  if (!webhookUrl || !imageUrl) return false;
+async function forwardImageToDiscord(webhookUrl, image) {
+  if (!webhookUrl || !image) return false;
   try {
-    const embedBody = JSON.stringify({
-      embeds: [{ image: { url: imageUrl } }],
-      allowed_mentions: { parse: [] },
+    const downloaded = await fetchImageBufferFromAny(image);
+    const fileName = image.fileName || `kol-image.${downloaded.mimeType.split("/").pop() || "jpg"}`;
+    return postDiscordFile(webhookUrl, {
+      buffer: downloaded.buffer,
+      mimeType: downloaded.mimeType,
+      fileName,
     });
+  } catch (error) {
+    console.warn(`[kol] Discord image upload failed: ${error.message}`);
+    return false;
+  }
+}
 
+async function postDiscordFile(webhookUrl, file) {
+  if (!webhookUrl || !file?.buffer?.length) return false;
+  const boundary = `----kol-${crypto.randomBytes(12).toString("hex")}`;
+  const payload = JSON.stringify({
+    attachments: [{ id: 0, filename: file.fileName || "kol-image.jpg" }],
+      allowed_mentions: { parse: [] },
+  });
+  const parts = [
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="payload_json"\r\nContent-Type: application/json\r\n\r\n${payload}\r\n`,
+    ),
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="files[0]"; filename="${String(file.fileName || "kol-image.jpg").replace(/"/g, "")}"\r\nContent-Type: ${file.mimeType || "image/jpeg"}\r\n\r\n`,
+    ),
+    file.buffer,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ];
+  const body = Buffer.concat(parts);
+
+  try {
     const u = new URL(webhookUrl);
-    await new Promise((resolve, reject) => {
+    const statusCode = await new Promise((resolve, reject) => {
       const req = https.request({
         hostname: u.hostname, port: 443, path: u.pathname + u.search,
         method: "POST", agent: proxyAgent,
-        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(embedBody) },
-      }, (res) => { res.resume(); resolve(res.statusCode); });
+        headers: {
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          "Content-Length": body.length,
+        },
+      }, (res) => { res.resume(); resolve(res.statusCode || 0); });
       req.on("error", reject);
-      req.write(embedBody);
+      req.write(body);
       req.end();
     });
-    return true;
-  } catch {
+    return statusCode >= 200 && statusCode < 300;
+  } catch (error) {
+    console.warn(`[kol] Discord file post failed: ${error.message}`);
     return false;
   }
 }
@@ -426,13 +481,27 @@ async function fetchImageBuffer(imageUrl) {
   };
 }
 
-async function uploadFeishuImageFromUrl(imageUrl) {
-  if (!canUploadFeishuImages() || !imageUrl) return "";
-  if (feishuImageKeyCache.has(imageUrl)) {
-    return feishuImageKeyCache.get(imageUrl);
+async function fetchImageBufferFromAny(image) {
+  const candidates = Array.isArray(image) ? image : image?.urls || [image];
+  const errors = [];
+  for (const imageUrl of candidates.map(normalizeImageUrl).filter(Boolean)) {
+    try {
+      return await fetchImageBuffer(imageUrl);
+    } catch (error) {
+      errors.push(`${imageUrl}: ${error.message}`);
+    }
+  }
+  throw new Error(errors.length ? errors.join("; ") : "no image url");
+}
+
+async function uploadFeishuImage(image) {
+  if (!canUploadFeishuImages() || !image) return "";
+  const cacheKey = image.key || image.urls?.[0] || "";
+  if (cacheKey && feishuImageKeyCache.has(cacheKey)) {
+    return feishuImageKeyCache.get(cacheKey);
   }
 
-  const { buffer, mimeType } = await fetchImageBuffer(imageUrl);
+  const { buffer, mimeType } = await fetchImageBufferFromAny(image);
   const token = await getFeishuTenantAccessToken();
   const form = new FormData();
   const fileName = `kol-image.${mimeType.split("/").pop() || "jpg"}`;
@@ -451,7 +520,7 @@ async function uploadFeishuImageFromUrl(imageUrl) {
   }
 
   console.log(`[kol] Feishu image uploaded: ${imageKey}`);
-  feishuImageKeyCache.set(imageUrl, imageKey);
+  if (cacheKey) feishuImageKeyCache.set(cacheKey, imageKey);
   return imageKey;
 }
 
@@ -504,14 +573,14 @@ async function postFeishuImageLink(webhookUrl, imageUrl, signSecret = "") {
   );
 }
 
-async function forwardImageToFeishu(webhookUrl, imageUrl, signSecret = "") {
-  if (!webhookUrl || !imageUrl) return false;
+async function forwardImageToFeishu(webhookUrl, image, signSecret = "") {
+  if (!webhookUrl || !image) return false;
   if (!canUploadFeishuImages()) {
-    return postFeishuImageLink(webhookUrl, imageUrl, signSecret);
+    return postFeishuImageLink(webhookUrl, image.urls?.[0] || image, signSecret);
   }
 
   try {
-    const imageKey = await uploadFeishuImageFromUrl(imageUrl);
+    const imageKey = await uploadFeishuImage(image);
     if (imageKey && (await postFeishuImage(webhookUrl, imageKey, signSecret))) {
       return true;
     }
@@ -530,9 +599,9 @@ async function postFeishuTextToRoute(route, card) {
   return postToFeishu(route.feishuWebhookUrl, card, route.feishuSignSecret);
 }
 
-async function forwardFeishuImageToRoute(route, imageUrl) {
-  if (!route?.feishuWebhookUrl || !imageUrl) return false;
-  return forwardImageToFeishu(route.feishuWebhookUrl, imageUrl, route.feishuSignSecret);
+async function forwardFeishuImageToRoute(route, image) {
+  if (!route?.feishuWebhookUrl || !image) return false;
+  return forwardImageToFeishu(route.feishuWebhookUrl, image, route.feishuSignSecret);
 }
 
 // ── formatting (denoise only, no restructure) ──────────────
@@ -847,7 +916,7 @@ export class KolScraper {
     const label = route.authorName;
     const rawText = extractCleanableText(msg);
     const cleaned = rawText ? sanitizeForwardText(rawText) : "";
-    const imageUrls = getMessageImageUrls(msg);
+    const images = getMessageImages(msg);
 
     // 1. Post text to Discord
     if (route.discordWebhookUrl && cleaned) {
@@ -858,15 +927,15 @@ export class KolScraper {
     }
 
     // 2. Post images
-    if (imageUrls.length) {
-      for (const imageUrl of imageUrls) {
+    if (images.length) {
+      for (const image of images) {
         if (route.discordWebhookUrl) {
-          const ok = await forwardImageToDiscord(route.discordWebhookUrl, imageUrl);
+          const ok = await forwardImageToDiscord(route.discordWebhookUrl, image);
           if (ok) this.stats.discordImageSent++;
           else this.stats.failures++;
         }
         if (route.feishuWebhookUrl) {
-          const ok = await forwardFeishuImageToRoute(route, imageUrl);
+          const ok = await forwardFeishuImageToRoute(route, image);
           if (ok) this.stats.feishuImageSent++;
           else this.stats.failures++;
         }
@@ -885,7 +954,7 @@ export class KolScraper {
       else this.stats.failures++;
     }
 
-    const imgTag = imageUrls.length ? ` +${imageUrls.length}📎` : "";
+    const imgTag = images.length ? ` +${images.length}📎` : "";
     console.log(`[kol] ${label} → discord:${route.discordWebhookUrl ? "✓" : "✗"} feishu:${route.feishuWebhookUrl ? "✓" : "✗"}${imgTag}`);
   }
 
@@ -1103,7 +1172,7 @@ export class KolScraper {
         entry.messageId = msg.message_id || "";
         const rawText = extractCleanableText(msg);
         const cleaned = rawText ? sanitizeForwardText(rawText) : "";
-        const imageUrls = getMessageImageUrls(msg);
+        const images = getMessageImages(msg);
 
         // ── Feishu text ──
         if (sendFeishu && route.feishuWebhookUrl && cleaned) {
@@ -1121,14 +1190,14 @@ export class KolScraper {
         }
 
         // ── Feishu images ──
-        if (sendFeishu && route.feishuWebhookUrl && imageUrls.length) {
+        if (sendFeishu && route.feishuWebhookUrl && images.length) {
           const imgOut = [];
-          for (const imageUrl of imageUrls) {
-            const ok = await forwardFeishuImageToRoute(route, imageUrl);
+          for (const image of images) {
+            const ok = await forwardFeishuImageToRoute(route, image);
             imgOut.push(ok ? "native" : "failed");
           }
           entry.feishuImage = imgOut.join(", ");
-        } else if (sendFeishu && !imageUrls.length) {
+        } else if (sendFeishu && !images.length) {
           entry.feishuImage = "no attachments";
         }
 
@@ -1142,10 +1211,10 @@ export class KolScraper {
         }
 
         // ── Discord images ──
-        if (sendDiscord && route.discordWebhookUrl && imageUrls.length) {
+        if (sendDiscord && route.discordWebhookUrl && images.length) {
           const imgOut = [];
-          for (const imageUrl of imageUrls) {
-            const ok = await forwardImageToDiscord(route.discordWebhookUrl, imageUrl);
+          for (const image of images) {
+            const ok = await forwardImageToDiscord(route.discordWebhookUrl, image);
             imgOut.push(ok ? "ok" : "failed");
           }
           entry.discordImage = imgOut.join(", ");
