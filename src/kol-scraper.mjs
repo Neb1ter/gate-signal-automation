@@ -1027,6 +1027,112 @@ export class KolScraper {
       feishuFallbackConfigured: Boolean(config.kol?.feishuFallbackWebhookUrl),
     };
   }
+
+  /**
+   * Cloud test-send: fetch latest real KOL messages and forward to
+   * Feishu / Discord.  Bypasses dedup / lastSeen so the forwarding
+   * pipeline is exercised with live data.  Admin-only.
+   */
+  async testSend({ only = [], skip = ["舒琴"], limit = 1, sendDiscord = false, sendFeishu = true } = {}) {
+    const onlySet = new Set(only.filter(Boolean));
+    const skipSet = new Set(skip.filter(Boolean));
+
+    const targets = this.activeRoutes.filter((r) => {
+      if (skipSet.has(r.authorName)) return false;
+      if (onlySet.size && !onlySet.has(r.authorName)) return false;
+      return true;
+    });
+
+    const results = [];
+
+    for (const route of targets) {
+      const entry = {
+        authorName: route.authorName,
+        messageId: "",
+        feishuText: "skipped",
+        feishuImage: "skipped",
+        discordText: "skipped",
+        discordImage: "skipped",
+        error: null,
+      };
+
+      try {
+        const messages = await fetchChannelMessages(route.kolChannelId, limit);
+        if (!messages.length) {
+          entry.error = "no messages returned from kol.lysq.cc";
+          results.push(entry);
+          continue;
+        }
+
+        const msg = messages[0];
+        entry.messageId = msg.message_id || "";
+        const rawText = extractRawText(msg);
+        const cleaned = rawText ? sanitizeForwardText(rawText) : "";
+
+        // ── Feishu text ──
+        if (sendFeishu && route.feishuWebhookUrl && cleaned) {
+          const card = {
+            title: `KOL转发｜${route.authorName}`,
+            content: cleaned,
+            channel: msg.channel_name || "",
+          };
+          const r = await postToFeishuWithFallback(route, card);
+          entry.feishuText = r.ok ? (r.usedFallback ? "fallback" : "ok") : "failed";
+        } else if (sendFeishu && !route.feishuWebhookUrl) {
+          entry.feishuText = "no webhook";
+        } else if (sendFeishu && !cleaned) {
+          entry.feishuText = "no text";
+        }
+
+        // ── Feishu images ──
+        if (sendFeishu && route.feishuWebhookUrl && msg.attachments?.length) {
+          const imgOut = [];
+          for (const att of msg.attachments) {
+            const imageUrl = buildImageUrl(att);
+            if (!imageUrl) {
+              imgOut.push("no-url");
+              continue;
+            }
+            const r = await forwardImageToFeishuWithFallback(route, imageUrl);
+            imgOut.push(r.ok ? (r.usedFallback ? "fallback" : "native") : "failed");
+          }
+          entry.feishuImage = imgOut.join(", ");
+        } else if (sendFeishu && !msg.attachments?.length) {
+          entry.feishuImage = "no attachments";
+        }
+
+        // ── Discord text ──
+        if (sendDiscord && route.discordWebhookUrl && cleaned) {
+          const content = `**【KOL转发测试｜${route.authorName}】**\n\n${cleaned}`;
+          const ok = await postToDiscord(route.discordWebhookUrl, content);
+          entry.discordText = ok ? "ok" : "failed";
+        } else if (sendDiscord && !route.discordWebhookUrl) {
+          entry.discordText = "no webhook";
+        }
+
+        // ── Discord images ──
+        if (sendDiscord && route.discordWebhookUrl && msg.attachments?.length) {
+          const imgOut = [];
+          for (const att of msg.attachments) {
+            const imageUrl = buildImageUrl(att);
+            if (!imageUrl) {
+              imgOut.push("no-url");
+              continue;
+            }
+            const ok = await forwardImageToDiscord(route.discordWebhookUrl, imageUrl);
+            imgOut.push(ok ? "ok" : "failed");
+          }
+          entry.discordImage = imgOut.join(", ");
+        }
+      } catch (e) {
+        entry.error = e.message;
+      }
+
+      results.push(entry);
+    }
+
+    return { ok: true, results };
+  }
 }
 
 // ── quick test CLI ────────────────────────────────────────

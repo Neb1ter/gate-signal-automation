@@ -588,6 +588,17 @@ function renderLoginPage(nextPath = "/admin", errorMessage = "") {
 </html>`;
 }
 
+function isApiAuthenticated(request) {
+  if (!config.adminAccessToken) return true;
+  // Bearer token
+  const authHeader = (request.headers.authorization || "").trim();
+  if (authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7) === config.adminAccessToken;
+  }
+  // Cookie auth
+  return isAdminAuthenticated(request);
+}
+
 function requireAdmin(request, response, url) {
   if (isAdminAuthenticated(request)) {
     return true;
@@ -1130,6 +1141,17 @@ const server = http.createServer(async (request, response) => {
       const payload = await parseBody(request);
       const result = await processTelegramUpdate(payload || {});
       json(response, 200, result || { ignored: true });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/kol/test-send") {
+      if (!isApiAuthenticated(request)) {
+        json(response, 401, { error: "Unauthorized" });
+        return;
+      }
+      const payload = await parseBody(request);
+      const result = await kolScraper.testSend(payload || {});
+      json(response, 200, result);
       return;
     }
 
