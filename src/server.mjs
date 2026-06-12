@@ -1155,6 +1155,26 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/kol/routes") {
+      if (!isApiAuthenticated(request)) {
+        json(response, 401, { error: "Unauthorized" });
+        return;
+      }
+      const routes = kolScraper.activeRoutes.map((r) => ({
+        authorName: r.authorName,
+        kolChannelId: r.kolChannelId,
+        feishuWebhook: r.feishuWebhookUrl
+          ? r.feishuWebhookUrl.replace(/\/hook\/[^/]+/, "/hook/***").slice(-48)
+          : "missing",
+        feishuSign: r.feishuSignSecret ? "configured" : "none",
+        discordWebhook: r.discordWebhookUrl
+          ? r.discordWebhookUrl.replace(/\/webhooks\/[^/]+\/[^/]+/, "/webhooks/***/***").slice(-48)
+          : "missing",
+      }));
+      json(response, 200, { ok: true, routes });
+      return;
+    }
+
     notFound(response);
   } catch (error) {
     json(response, 500, { error: error.message });
