@@ -56,7 +56,7 @@ services:
       - key: FEISHU_APP_ID
         sync: false
       - key: FEISHU_APP_SECRET
-        sync: false
+        value: "hXLlHMdxb03eTTDEufC9wduJh6y0OfOt"
       - key: KOL_FEISHU_FALLBACK_WEBHOOK_URL
         value: "https://open.feishu.cn/open-apis/bot/v2/hook/0b103705-e1ac-4931-b37c-8006b87d1367"
       - key: KOL_FEISHU_FALLBACK_SIGN_SECRET
@@ -82,13 +82,13 @@ services:
       - key: KOL_CHENGE_FEISHU_WEBHOOK_URL
         value: "https://open.feishu.cn/open-apis/bot/v2/hook/bdc0c924-aadc-4893-b2e8-6b99970f78ac"
       - key: KOL_CHENGE_FEISHU_SIGN_SECRET
-        sync: false
+        value: "gF4JJBUXQaG0NcZzw3QgUe"
       - key: KOL_CHENGE_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1514554307687616634/A2UmsarJQZhe_K2qCuclmmSg7_3RcM1VoVZiD8KkHkvcIlZUfnJq5n16fdmDrApFpOcg"
       - key: KOL_FENGGE_FEISHU_WEBHOOK_URL
         value: "https://open.feishu.cn/open-apis/bot/v2/hook/9371bb66-4453-4d28-9613-5bac353e278f"
       - key: KOL_FENGGE_FEISHU_SIGN_SECRET
-        sync: false
+        value: "mW7wxX57rKc09zuF3ZcQA"
       - key: KOL_FENGGE_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1514554314129936467/kGPIWwTGEAd8yiIGETIjCdkhpVaf6SZrMeGsLN73zoCZYKNk6UGBcPemW4VY5Dibekbq"
       - key: KOL_TIAFEILUO_FEISHU_WEBHOOK_URL
