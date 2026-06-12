@@ -1164,11 +1164,11 @@ const server = http.createServer(async (request, response) => {
         authorName: r.authorName,
         kolChannelId: r.kolChannelId,
         feishuWebhook: r.feishuWebhookUrl
-          ? r.feishuWebhookUrl.replace(/\/hook\/[^/]+/, "/hook/***").slice(-48)
+          ? (() => { const u = new URL(r.feishuWebhookUrl); return u.origin + u.pathname; })()
           : "missing",
         feishuSign: r.feishuSignSecret ? "configured" : "none",
         discordWebhook: r.discordWebhookUrl
-          ? r.discordWebhookUrl.replace(/\/webhooks\/[^/]+\/[^/]+/, "/webhooks/***/***").slice(-48)
+          ? (() => { const u = new URL(r.discordWebhookUrl); return u.origin + u.pathname.replace(/\/[^/]+$/, "/***"); })()
           : "missing",
       }));
       json(response, 200, { ok: true, routes });
