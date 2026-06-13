@@ -56,12 +56,25 @@ const defaultRuntimeSettings = {
 
     const currentSettings = store.getRuntimeSettings(defaultRuntimeSettings);
     const savedRoutes = currentSettings.feishu?.analystRoutes || [];
-    const payloadChatIds = new Set(payloadRoutes.map((r) => r.chatId));
+    const savedByChatId = new Map(savedRoutes.map((route) => [String(route.chatId || ""), route]));
+    const payloadChatIds = new Set(payloadRoutes.map((route) => String(route.chatId || "")));
 
-    // Keep saved routes for chatIds NOT in the payload; overwrite with payload for matching ids
+    // Keep saved webhook targets when the checked-in payload only carries
+    // labels/placeholders. A deploy must not erase Render's runtime routes.
+    const mergedPayloadRoutes = payloadRoutes.map((route) => {
+      const chatId = String(route.chatId || "");
+      const saved = savedByChatId.get(chatId) || {};
+      return {
+        ...saved,
+        ...route,
+        webhookUrl: route.webhookUrl || saved.webhookUrl || "",
+        discordWebhookUrl: route.discordWebhookUrl || saved.discordWebhookUrl || "",
+      };
+    });
+
     const merged = [
-      ...savedRoutes.filter((r) => !payloadChatIds.has(r.chatId)),
-      ...payloadRoutes,
+      ...savedRoutes.filter((route) => !payloadChatIds.has(String(route.chatId || ""))),
+      ...mergedPayloadRoutes,
     ];
 
     store.saveRuntimeSettings(
@@ -652,8 +665,7 @@ async function notifySignalToAllTargets(signal) {
   const feishuTargets = getFeishuDeliveryTargets(signal);
   const discordTargets = getDiscordDeliveryTargets(signal);
   if (!feishuTargets.length && !discordTargets.length) {
-    console.warn(`[notify] signal ${signal.id} has no delivery targets - check Feishu or Discord webhook settings`);
-    return;
+    throw new Error("No delivery targets configured - check Feishu or Discord webhook settings");
   }
 
   console.log(
@@ -672,8 +684,14 @@ async function notifySignalToAllTargets(signal) {
 async function safeNotifySignal(signal) {
   try {
     await notifySignalToAllTargets(signal);
+    return true;
   } catch (error) {
     console.warn(`[notify] signal ${signal.id} failed: ${error.message}`);
+    signal.processingState = "failed";
+    signal.processingError = error.message;
+    signal.processingUpdatedAt = new Date().toISOString();
+    store.upsertSignal(signal);
+    return false;
   }
 }
 const processingJobs = new Map();
@@ -763,7 +781,10 @@ async function finalizeSignalProcessing(signalId) {
   signal.deliveryDisplayName = deliveryOptions.displayName || signal.displaySourceName;
   store.upsertSignal(signal);
 
-  await safeNotifySignal(signal);
+  const notified = await safeNotifySignal(signal);
+  if (!notified) {
+    return signal;
+  }
   signal.notifiedAt = new Date().toISOString();
   signal.processingUpdatedAt = signal.notifiedAt;
   signal.processingState = "completed";
