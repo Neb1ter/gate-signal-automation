@@ -84,7 +84,7 @@ services:
       - key: KOL_CHENGE_FEISHU_SIGN_SECRET
         value: "gF4JJBUXQaG0NcZzw3QgUe"
       - key: KOL_CHENGE_FEISHU_CHAT_ID
-        sync: false
+        value: "oc_3022bcbea57506a5a536e9290198b511"
       - key: KOL_CHENGE_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1514554307687616634/A2UmsarJQZhe_K2qCuclmmSg7_3RcM1VoVZiD8KkHkvcIlZUfnJq5n16fdmDrApFpOcg"
       - key: KOL_FENGGE_FEISHU_WEBHOOK_URL

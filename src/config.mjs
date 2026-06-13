@@ -63,6 +63,7 @@ function parseBoolean(value, fallback = false) {
 loadEnvFile(envFilePath);
 
 const FEISHU_CHAT_ID_DEFAULTS = {
+  KOL_CHENGE_FEISHU_CHAT_ID: "oc_3022bcbea57506a5a536e9290198b511",
   KOL_FENGGE_FEISHU_CHAT_ID: "oc_682c8ba883a01f4141e3773c6d39543c",
   KOL_TIAFEILUO_FEISHU_CHAT_ID: "oc_289764dd070947aad28dafd15c6ccd8a",
   KOL_DABIAOKE_FEISHU_CHAT_ID: "oc_c788988632ea66bf82f05494a0b38d88",
@@ -148,7 +149,7 @@ export const config = {
         kolChannelId: "1444964071979089990",
         feishuWebhookUrl: process.env.KOL_CHENGE_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_CHENGE_FEISHU_SIGN_SECRET || "",
-        feishuChatId: process.env.KOL_CHENGE_FEISHU_CHAT_ID || "",
+        feishuChatId: envOrDefault("KOL_CHENGE_FEISHU_CHAT_ID", FEISHU_CHAT_ID_DEFAULTS.KOL_CHENGE_FEISHU_CHAT_ID),
         feishuExpectedChatNames: ["陈哥", "KOL转发｜陈哥"],
         discordWebhookUrl: process.env.KOL_CHENGE_DISCORD_WEBHOOK_URL || "",
       },
