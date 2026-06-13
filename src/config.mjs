@@ -166,7 +166,6 @@ export const config = {
         discordWebhookUrl:
           process.env.KOL_LINGXIAERDU_DISCORD_WEBHOOK_URL ||
           process.env.DISCORD_KOL_WEBHOOK_URL ||
-          process.env.DISCORD_WEBHOOK_URL ||
           "",
       },
       {
@@ -177,7 +176,6 @@ export const config = {
         discordWebhookUrl:
           process.env.KOL_FEIYANGVIP_DISCORD_WEBHOOK_URL ||
           process.env.DISCORD_KOL_WEBHOOK_URL ||
-          process.env.DISCORD_WEBHOOK_URL ||
           "",
       },
       {
@@ -188,7 +186,6 @@ export const config = {
         discordWebhookUrl:
           process.env.KOL_XIANG_METALS_DISCORD_WEBHOOK_URL ||
           process.env.DISCORD_KOL_WEBHOOK_URL ||
-          process.env.DISCORD_WEBHOOK_URL ||
           "",
       },
     ],
