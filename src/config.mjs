@@ -62,6 +62,19 @@ function parseBoolean(value, fallback = false) {
 
 loadEnvFile(envFilePath);
 
+const FEISHU_CHAT_ID_DEFAULTS = {
+  KOL_FENGGE_FEISHU_CHAT_ID: "oc_682c8ba883a01f4141e3773c6d39543c",
+  KOL_TIAFEILUO_FEISHU_CHAT_ID: "oc_289764dd070947aad28dafd15c6ccd8a",
+  KOL_DABIAOKE_FEISHU_CHAT_ID: "oc_c788988632ea66bf82f05494a0b38d88",
+  KOL_LINGXIAERDU_FEISHU_CHAT_ID: "oc_d8bccb30bdab44b2f95eccc1dac0052d",
+  KOL_FEIYANGVIP_FEISHU_CHAT_ID: "oc_06d467045111aaa47aedd7554478ad4e",
+  KOL_XIANG_METALS_FEISHU_CHAT_ID: "oc_7d8ef9deb18225b1c92b938f4556d944",
+};
+
+function envOrDefault(key, fallback = "") {
+  return process.env[key] || fallback;
+}
+
 const dataDir = path.resolve(projectRoot, process.env.DATA_DIR || "./data");
 const mediaDir = path.resolve(dataDir, process.env.MEDIA_DIR || "./media");
 const telegramUserSessionFile = path.resolve(
@@ -136,6 +149,7 @@ export const config = {
         feishuWebhookUrl: process.env.KOL_CHENGE_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_CHENGE_FEISHU_SIGN_SECRET || "",
         feishuChatId: process.env.KOL_CHENGE_FEISHU_CHAT_ID || "",
+        feishuExpectedChatNames: ["陈哥", "KOL转发｜陈哥"],
         discordWebhookUrl: process.env.KOL_CHENGE_DISCORD_WEBHOOK_URL || "",
       },
       {
@@ -143,7 +157,8 @@ export const config = {
         kolChannelId: "1444963929393729686",
         feishuWebhookUrl: process.env.KOL_FENGGE_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_FENGGE_FEISHU_SIGN_SECRET || "",
-        feishuChatId: process.env.KOL_FENGGE_FEISHU_CHAT_ID || "",
+        feishuChatId: envOrDefault("KOL_FENGGE_FEISHU_CHAT_ID", FEISHU_CHAT_ID_DEFAULTS.KOL_FENGGE_FEISHU_CHAT_ID),
+        feishuExpectedChatNames: ["峰哥", "KOL转发｜峰哥"],
         discordWebhookUrl: process.env.KOL_FENGGE_DISCORD_WEBHOOK_URL || "",
       },
       {
@@ -151,7 +166,8 @@ export const config = {
         kolChannelId: "1320436859477819433",
         feishuWebhookUrl: process.env.KOL_TIAFEILUO_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_TIAFEILUO_FEISHU_SIGN_SECRET || "",
-        feishuChatId: process.env.KOL_TIAFEILUO_FEISHU_CHAT_ID || "",
+        feishuChatId: envOrDefault("KOL_TIAFEILUO_FEISHU_CHAT_ID", FEISHU_CHAT_ID_DEFAULTS.KOL_TIAFEILUO_FEISHU_CHAT_ID),
+        feishuExpectedChatNames: ["提阿非罗", "KOL转发｜提阿非罗"],
         discordWebhookUrl: process.env.KOL_TIAFEILUO_DISCORD_WEBHOOK_URL || "",
       },
       {
@@ -159,7 +175,8 @@ export const config = {
         kolChannelId: "1444962339743989843",
         feishuWebhookUrl: process.env.KOL_DABIAOKE_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_DABIAOKE_FEISHU_SIGN_SECRET || "",
-        feishuChatId: process.env.KOL_DABIAOKE_FEISHU_CHAT_ID || "",
+        feishuChatId: envOrDefault("KOL_DABIAOKE_FEISHU_CHAT_ID", FEISHU_CHAT_ID_DEFAULTS.KOL_DABIAOKE_FEISHU_CHAT_ID),
+        feishuExpectedChatNames: ["大镖客", "KOL转发｜大镖客"],
         discordWebhookUrl: process.env.KOL_DABIAOKE_DISCORD_WEBHOOK_URL || "",
       },
       {
@@ -167,7 +184,8 @@ export const config = {
         kolChannelId: "1418888601340481607",
         feishuWebhookUrl: process.env.KOL_LINGXIAERDU_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_LINGXIAERDU_FEISHU_SIGN_SECRET || "",
-        feishuChatId: process.env.KOL_LINGXIAERDU_FEISHU_CHAT_ID || "",
+        feishuChatId: envOrDefault("KOL_LINGXIAERDU_FEISHU_CHAT_ID", FEISHU_CHAT_ID_DEFAULTS.KOL_LINGXIAERDU_FEISHU_CHAT_ID),
+        feishuExpectedChatNames: ["零下二度", "KOL转发｜零下二度"],
         discordWebhookUrl:
           process.env.KOL_LINGXIAERDU_DISCORD_WEBHOOK_URL ||
           process.env.DISCORD_KOL_WEBHOOK_URL ||
@@ -178,7 +196,8 @@ export const config = {
         kolChannelId: "1444962410002911396",
         feishuWebhookUrl: process.env.KOL_FEIYANGVIP_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_FEIYANGVIP_FEISHU_SIGN_SECRET || "",
-        feishuChatId: process.env.KOL_FEIYANGVIP_FEISHU_CHAT_ID || "",
+        feishuChatId: envOrDefault("KOL_FEIYANGVIP_FEISHU_CHAT_ID", FEISHU_CHAT_ID_DEFAULTS.KOL_FEIYANGVIP_FEISHU_CHAT_ID),
+        feishuExpectedChatNames: ["飞扬vip", "KOL转发｜飞扬vip"],
         discordWebhookUrl:
           process.env.KOL_FEIYANGVIP_DISCORD_WEBHOOK_URL ||
           process.env.DISCORD_KOL_WEBHOOK_URL ||
@@ -189,7 +208,8 @@ export const config = {
         kolChannelId: "1464406516282167448",
         feishuWebhookUrl: process.env.KOL_XIANG_METALS_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_XIANG_METALS_FEISHU_SIGN_SECRET || "",
-        feishuChatId: process.env.KOL_XIANG_METALS_FEISHU_CHAT_ID || "",
+        feishuChatId: envOrDefault("KOL_XIANG_METALS_FEISHU_CHAT_ID", FEISHU_CHAT_ID_DEFAULTS.KOL_XIANG_METALS_FEISHU_CHAT_ID),
+        feishuExpectedChatNames: ["相-金属会员群", "KOL转发｜相-金属会员群"],
         discordWebhookUrl:
           process.env.KOL_XIANG_METALS_DISCORD_WEBHOOK_URL ||
           process.env.DISCORD_KOL_WEBHOOK_URL ||

@@ -92,7 +92,7 @@ services:
       - key: KOL_FENGGE_FEISHU_SIGN_SECRET
         value: "mW7wxX57rKc09zuF3ZcQA"
       - key: KOL_FENGGE_FEISHU_CHAT_ID
-        sync: false
+        value: "oc_682c8ba883a01f4141e3773c6d39543c"
       - key: KOL_FENGGE_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1514554314129936467/kGPIWwTGEAd8yiIGETIjCdkhpVaf6SZrMeGsLN73zoCZYKNk6UGBcPemW4VY5Dibekbq"
       - key: KOL_TIAFEILUO_FEISHU_WEBHOOK_URL
@@ -100,7 +100,7 @@ services:
       - key: KOL_TIAFEILUO_FEISHU_SIGN_SECRET
         sync: false
       - key: KOL_TIAFEILUO_FEISHU_CHAT_ID
-        sync: false
+        value: "oc_289764dd070947aad28dafd15c6ccd8a"
       - key: KOL_TIAFEILUO_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1514554320203550780/TBwU87jLTDaQU4FYCZTIblJYGYuitcE1p4AW20Vj9H059a9r3WDTZo5YGaDLuwpW2-cW"
       - key: KOL_DABIAOKE_FEISHU_WEBHOOK_URL
@@ -108,7 +108,7 @@ services:
       - key: KOL_DABIAOKE_FEISHU_SIGN_SECRET
         sync: false
       - key: KOL_DABIAOKE_FEISHU_CHAT_ID
-        sync: false
+        value: "oc_c788988632ea66bf82f05494a0b38d88"
       - key: KOL_DABIAOKE_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1514554326918627329/kd47JIAQYtTH1NZ0WOKGCOfpgIOX4G7NTfN4XceUAEd943wnbvek9SaKhdeu9ZYHPj9w"
       - key: KOL_LINGXIAERDU_FEISHU_WEBHOOK_URL

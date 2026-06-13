@@ -154,6 +154,7 @@ const FEISHU_IMAGE_URL = "https://open.feishu.cn/open-apis/im/v1/images";
 let feishuTenantAccessToken = "";
 let feishuTenantAccessTokenExpiresAt = 0;
 const feishuImageKeyCache = new Map();
+const feishuChatValidationCache = new Map();
 
 // ── dedup ──────────────────────────────────────────────────
 
@@ -562,8 +563,13 @@ async function postFeishuJson(webhookUrl, payload, signSecret = "") {
       body: JSON.stringify(signFeishuPayload(payload, signSecret)),
     });
     const data = await resp.json().catch(() => null);
-    return resp.ok && (!data || data.code === 0);
-  } catch {
+    const ok = resp.ok && (!data || data.code === 0);
+    if (!ok) {
+      console.warn(`[kol] Feishu webhook send failed: ${data?.code || resp.status} ${data?.msg || resp.statusText || ""}`.trim());
+    }
+    return ok;
+  } catch (error) {
+    console.warn(`[kol] Feishu webhook send failed: ${error.message}`);
     return false;
   }
 }
@@ -600,6 +606,57 @@ async function forwardImageToFeishu(webhookUrl, image, signSecret = "") {
 // ── Feishu API-based sending (chat_id, no webhook) ──────────
 
 const FEISHU_MSG_URL = "https://open.feishu.cn/open-apis/im/v1/messages";
+const FEISHU_CHAT_URL = "https://open.feishu.cn/open-apis/im/v1/chats";
+
+function getExpectedFeishuChatNames(route) {
+  const names = Array.isArray(route?.feishuExpectedChatNames)
+    ? route.feishuExpectedChatNames
+    : [];
+  const fallbackNames = route?.authorName
+    ? [route.authorName, `KOL转发｜${route.authorName}`]
+    : [];
+  return [...new Set([...names, ...fallbackNames].filter(Boolean))];
+}
+
+async function validateFeishuChatForRoute(route) {
+  const chatId = route?.feishuChatId || "";
+  if (!chatId) return false;
+
+  const expectedNames = getExpectedFeishuChatNames(route);
+  const cacheKey = `${chatId}:${expectedNames.join("|")}`;
+  if (feishuChatValidationCache.has(cacheKey)) {
+    return feishuChatValidationCache.get(cacheKey);
+  }
+
+  try {
+    const token = await getFeishuTenantAccessToken();
+    if (!token) return false;
+    const resp = await proxyFetch(`${FEISHU_CHAT_URL}/${encodeURIComponent(chatId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await resp.json().catch(() => null);
+    const actualName = data?.data?.name || "";
+    const ok =
+      resp.ok &&
+      data?.code === 0 &&
+      (!expectedNames.length || expectedNames.includes(actualName));
+
+    if (!ok) {
+      const reason = data?.code === 0
+        ? `points to "${actualName || "unknown"}"`
+        : `${data?.code || resp.status} ${data?.msg || resp.statusText || ""}`.trim();
+      console.warn(`[kol] Feishu chat_id rejected for ${route?.authorName || "unknown"}: ${reason}`);
+    }
+
+    if (resp.ok && data?.code === 0) {
+      feishuChatValidationCache.set(cacheKey, ok);
+    }
+    return ok;
+  } catch (error) {
+    console.warn(`[kol] Feishu chat validation failed for ${route?.authorName || "unknown"}: ${error.message}`);
+    return false;
+  }
+}
 
 async function sendFeishuMessageViaApi(chatId, content) {
   if (!chatId || !content) return false;
@@ -623,7 +680,11 @@ async function sendFeishuMessageViaApi(chatId, content) {
       },
     );
     const data = await resp.json().catch(() => null);
-    return resp.ok && data?.code === 0;
+    const ok = resp.ok && data?.code === 0;
+    if (!ok) {
+      console.warn(`[kol] Feishu API text send failed: ${data?.code || resp.status} ${data?.msg || resp.statusText || ""}`.trim());
+    }
+    return ok;
   } catch (error) {
     console.warn(`[kol] Feishu API text send failed: ${error.message}`);
     return false;
@@ -673,7 +734,11 @@ async function sendFeishuCardViaApi(chatId, card) {
       },
     );
     const data = await resp.json().catch(() => null);
-    return resp.ok && data?.code === 0;
+    const ok = resp.ok && data?.code === 0;
+    if (!ok) {
+      console.warn(`[kol] Feishu API card send failed: ${data?.code || resp.status} ${data?.msg || resp.statusText || ""}`.trim());
+    }
+    return ok;
   } catch (error) {
     console.warn(`[kol] Feishu API card send failed: ${error.message}`);
     return false;
@@ -702,7 +767,11 @@ async function sendFeishuImageViaApi(chatId, imageKey) {
       },
     );
     const data = await resp.json().catch(() => null);
-    return resp.ok && data?.code === 0;
+    const ok = resp.ok && data?.code === 0;
+    if (!ok) {
+      console.warn(`[kol] Feishu API image send failed: ${data?.code || resp.status} ${data?.msg || resp.statusText || ""}`.trim());
+    }
+    return ok;
   } catch (error) {
     console.warn(`[kol] Feishu API image send failed: ${error.message}`);
     return false;
@@ -736,18 +805,24 @@ async function forwardImageToFeishuChat(chatId, image) {
 // another KOL's Feishu group.
 
 async function postFeishuTextToRoute(route, card) {
-  // Prefer chat_id (API) over webhook
-  if (route?.feishuChatId) {
-    return sendFeishuCardViaApi(route.feishuChatId, card);
+  if (route?.feishuChatId && (await validateFeishuChatForRoute(route))) {
+    const ok = await sendFeishuCardViaApi(route.feishuChatId, card);
+    if (ok) return true;
+    if (route?.feishuWebhookUrl) {
+      console.warn(`[kol] Feishu chat text failed for ${route.authorName}; trying webhook fallback`);
+    }
   }
   if (!route?.feishuWebhookUrl) return false;
   return postToFeishu(route.feishuWebhookUrl, card, route.feishuSignSecret);
 }
 
 async function forwardFeishuImageToRoute(route, image) {
-  // Prefer chat_id (API) over webhook
-  if (route?.feishuChatId) {
-    return forwardImageToFeishuChat(route.feishuChatId, image);
+  if (route?.feishuChatId && (await validateFeishuChatForRoute(route))) {
+    const ok = await forwardImageToFeishuChat(route.feishuChatId, image);
+    if (ok) return true;
+    if (route?.feishuWebhookUrl) {
+      console.warn(`[kol] Feishu chat image failed for ${route.authorName}; trying webhook fallback`);
+    }
   }
   if (!route?.feishuWebhookUrl || !image) return false;
   return forwardImageToFeishu(route.feishuWebhookUrl, image, route.feishuSignSecret);

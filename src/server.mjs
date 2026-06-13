@@ -1088,6 +1088,17 @@ const server = http.createServer(async (request, response) => {
         kol: {
           mode: kolScraper.mode,
           activeRoutes: kolScraper.activeRoutes.map((r) => r.authorName),
+          routeTargets: kolScraper.activeRoutes.map((r) => ({
+            name: r.authorName,
+            feishuTarget: r.feishuChatId
+              ? r.feishuWebhookUrl
+                ? "chat+webhook"
+                : "chat"
+              : r.feishuWebhookUrl
+                ? "webhook"
+                : "missing",
+            discord: Boolean(r.discordWebhookUrl),
+          })),
           stats: kolScraper.getStats(),
         },
       });
@@ -1188,6 +1199,7 @@ const server = http.createServer(async (request, response) => {
           ? (() => { const u = new URL(r.feishuWebhookUrl); return u.origin + u.pathname; })()
           : "missing",
         feishuSign: r.feishuSignSecret ? "configured" : "none",
+        feishuChat: r.feishuChatId ? "configured" : "missing",
         discordWebhook: r.discordWebhookUrl
           ? (() => { const u = new URL(r.discordWebhookUrl); return u.origin + u.pathname.replace(/\/[^/]+$/, "/***"); })()
           : "missing",
