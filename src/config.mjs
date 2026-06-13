@@ -161,7 +161,7 @@ export const config = {
       {
         authorName: "零下二度",
         kolChannelId: "1418888601340481607",
-        feishuWebhookUrl: process.env.KOL_LINGXIAERDU_FEISHU_WEBHOOK_URL || process.env.FEISHU_WEBHOOK_URL || "",
+        feishuWebhookUrl: process.env.KOL_LINGXIAERDU_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_LINGXIAERDU_FEISHU_SIGN_SECRET || "",
         discordWebhookUrl:
           process.env.KOL_LINGXIAERDU_DISCORD_WEBHOOK_URL ||
@@ -171,7 +171,7 @@ export const config = {
       {
         authorName: "飞扬vip",
         kolChannelId: "1444962410002911396",
-        feishuWebhookUrl: process.env.KOL_FEIYANGVIP_FEISHU_WEBHOOK_URL || process.env.FEISHU_WEBHOOK_URL || "",
+        feishuWebhookUrl: process.env.KOL_FEIYANGVIP_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_FEIYANGVIP_FEISHU_SIGN_SECRET || "",
         discordWebhookUrl:
           process.env.KOL_FEIYANGVIP_DISCORD_WEBHOOK_URL ||
@@ -181,7 +181,7 @@ export const config = {
       {
         authorName: "相-金属会员群",
         kolChannelId: "1464406516282167448",
-        feishuWebhookUrl: process.env.KOL_XIANG_METALS_FEISHU_WEBHOOK_URL || process.env.FEISHU_WEBHOOK_URL || "",
+        feishuWebhookUrl: process.env.KOL_XIANG_METALS_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_XIANG_METALS_FEISHU_SIGN_SECRET || "",
         discordWebhookUrl:
           process.env.KOL_XIANG_METALS_DISCORD_WEBHOOK_URL ||
