@@ -83,17 +83,23 @@ services:
         value: "https://open.feishu.cn/open-apis/bot/v2/hook/bdc0c924-aadc-4893-b2e8-6b99970f78ac"
       - key: KOL_CHENGE_FEISHU_SIGN_SECRET
         value: "gF4JJBUXQaG0NcZzw3QgUe"
+      - key: KOL_CHENGE_FEISHU_CHAT_ID
+        sync: false
       - key: KOL_CHENGE_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1514554307687616634/A2UmsarJQZhe_K2qCuclmmSg7_3RcM1VoVZiD8KkHkvcIlZUfnJq5n16fdmDrApFpOcg"
       - key: KOL_FENGGE_FEISHU_WEBHOOK_URL
         value: "https://open.feishu.cn/open-apis/bot/v2/hook/9371bb66-4453-4d28-9613-5bac353e278f"
       - key: KOL_FENGGE_FEISHU_SIGN_SECRET
         value: "mW7wxX57rKc09zuF3ZcQA"
+      - key: KOL_FENGGE_FEISHU_CHAT_ID
+        sync: false
       - key: KOL_FENGGE_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1514554314129936467/kGPIWwTGEAd8yiIGETIjCdkhpVaf6SZrMeGsLN73zoCZYKNk6UGBcPemW4VY5Dibekbq"
       - key: KOL_TIAFEILUO_FEISHU_WEBHOOK_URL
         value: "https://open.feishu.cn/open-apis/bot/v2/hook/55e42a2c-7a0c-455b-aa69-da9f7ed39783"
       - key: KOL_TIAFEILUO_FEISHU_SIGN_SECRET
+        sync: false
+      - key: KOL_TIAFEILUO_FEISHU_CHAT_ID
         sync: false
       - key: KOL_TIAFEILUO_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1514554320203550780/TBwU87jLTDaQU4FYCZTIblJYGYuitcE1p4AW20Vj9H059a9r3WDTZo5YGaDLuwpW2-cW"
@@ -101,23 +107,31 @@ services:
         value: "https://open.feishu.cn/open-apis/bot/v2/hook/63d3ef55-3d6c-448c-9b01-ef181ccbd837"
       - key: KOL_DABIAOKE_FEISHU_SIGN_SECRET
         sync: false
+      - key: KOL_DABIAOKE_FEISHU_CHAT_ID
+        sync: false
       - key: KOL_DABIAOKE_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1514554326918627329/kd47JIAQYtTH1NZ0WOKGCOfpgIOX4G7NTfN4XceUAEd943wnbvek9SaKhdeu9ZYHPj9w"
       - key: KOL_LINGXIAERDU_FEISHU_WEBHOOK_URL
         sync: false
       - key: KOL_LINGXIAERDU_FEISHU_SIGN_SECRET
         sync: false
+      - key: KOL_LINGXIAERDU_FEISHU_CHAT_ID
+        value: "oc_d8bccb30bdab44b2f95eccc1dac0052d"
       - key: KOL_LINGXIAERDU_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1515264320928354384/XHvGsOOKuCoIJ8wolIQiEUIKghefIdZOWYVHmT8vvR7btncgyazxvYWmsoSbkF6RW2iA"
       - key: KOL_FEIYANGVIP_FEISHU_WEBHOOK_URL
         sync: false
       - key: KOL_FEIYANGVIP_FEISHU_SIGN_SECRET
         sync: false
+      - key: KOL_FEIYANGVIP_FEISHU_CHAT_ID
+        value: "oc_06d467045111aaa47aedd7554478ad4e"
       - key: KOL_FEIYANGVIP_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1515264326062309406/8vkNHKhl5Ewa_L_yEubbvRC5URXGwiu2xDrld-qRgywiY5crVVgUFaQYsoG0_Z6aF1H2"
       - key: KOL_XIANG_METALS_FEISHU_WEBHOOK_URL
         sync: false
       - key: KOL_XIANG_METALS_FEISHU_SIGN_SECRET
         sync: false
+      - key: KOL_XIANG_METALS_FEISHU_CHAT_ID
+        value: "oc_7d8ef9deb18225b1c92b938f4556d944"
       - key: KOL_XIANG_METALS_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1515264330629775594/Zerhbs3F91W2qPA7f77QF1zzteH78u-8P8yTn589kLp8h7XDKT4zauQswHwFKvkBX2v4"

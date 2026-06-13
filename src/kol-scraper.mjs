@@ -278,9 +278,16 @@ function findAttachmentsForSignal(rawMessages, signal) {
  */
 function buildImageUrls(att) {
   const urls = [];
+
+  // Priority 1: kol.lysq.cc accessUrl (works without proxy, real file path)
+  const accessUrl = att?.accessUrl || "";
+  if (accessUrl) urls.push(accessUrl);
+
+  // Priority 2: original CDN URL (may be blocked in China)
   const cdnUrl = att?.originalUrl || "";
   if (cdnUrl) urls.push(cdnUrl);
 
+  // Priority 3: constructed URL (fallback, may 404 if path differs)
   const msgId = att?.messageId || "";
   const attId = att?.attachmentId || "";
   const ext = (att?.originalName || "image.png").split(".").pop();
@@ -590,16 +597,158 @@ async function forwardImageToFeishu(webhookUrl, image, signSecret = "") {
   return false;
 }
 
+// ── Feishu API-based sending (chat_id, no webhook) ──────────
+
+const FEISHU_MSG_URL = "https://open.feishu.cn/open-apis/im/v1/messages";
+
+async function sendFeishuMessageViaApi(chatId, content) {
+  if (!chatId || !content) return false;
+  const token = await getFeishuTenantAccessToken();
+  if (!token) return false;
+
+  try {
+    const resp = await proxyFetch(
+      `${FEISHU_MSG_URL}?receive_id_type=chat_id`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          receive_id: chatId,
+          msg_type: "text",
+          content: JSON.stringify({ text: String(content).slice(0, 15000) }),
+        }),
+      },
+    );
+    const data = await resp.json().catch(() => null);
+    return resp.ok && data?.code === 0;
+  } catch (error) {
+    console.warn(`[kol] Feishu API text send failed: ${error.message}`);
+    return false;
+  }
+}
+
+async function sendFeishuCardViaApi(chatId, card) {
+  if (!chatId || !card) return false;
+  const token = await getFeishuTenantAccessToken();
+  if (!token) return false;
+
+  const cardPayload = {
+    config: { wide_screen_mode: true },
+    header: {
+      title: { content: card.title, tag: "plain_text" },
+      template: "blue",
+    },
+    elements: [
+      { tag: "div", text: { content: card.content, tag: "lark_md" } },
+      { tag: "hr" },
+      {
+        tag: "note",
+        elements: [
+          {
+            content: `KOL转发 · ${card.channel || card.title}`,
+            tag: "plain_text",
+          },
+        ],
+      },
+    ],
+  };
+
+  try {
+    const resp = await proxyFetch(
+      `${FEISHU_MSG_URL}?receive_id_type=chat_id`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          receive_id: chatId,
+          msg_type: "interactive",
+          content: JSON.stringify(cardPayload),
+        }),
+      },
+    );
+    const data = await resp.json().catch(() => null);
+    return resp.ok && data?.code === 0;
+  } catch (error) {
+    console.warn(`[kol] Feishu API card send failed: ${error.message}`);
+    return false;
+  }
+}
+
+async function sendFeishuImageViaApi(chatId, imageKey) {
+  if (!chatId || !imageKey) return false;
+  const token = await getFeishuTenantAccessToken();
+  if (!token) return false;
+
+  try {
+    const resp = await proxyFetch(
+      `${FEISHU_MSG_URL}?receive_id_type=chat_id`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          receive_id: chatId,
+          msg_type: "image",
+          content: JSON.stringify({ image_key: imageKey }),
+        }),
+      },
+    );
+    const data = await resp.json().catch(() => null);
+    return resp.ok && data?.code === 0;
+  } catch (error) {
+    console.warn(`[kol] Feishu API image send failed: ${error.message}`);
+    return false;
+  }
+}
+
+async function forwardImageToFeishuChat(chatId, image) {
+  if (!chatId || !image) return false;
+  if (!canUploadFeishuImages()) {
+    // Fallback: send image URL as text
+    const url = image.urls?.[0] || "";
+    if (url) {
+      return sendFeishuMessageViaApi(chatId, `[图片] ${url}`);
+    }
+    return false;
+  }
+
+  try {
+    const imageKey = await uploadFeishuImage(image);
+    if (imageKey) {
+      return sendFeishuImageViaApi(chatId, imageKey);
+    }
+  } catch (error) {
+    console.warn(`[kol] Feishu chat image upload failed: ${error.message}`);
+  }
+  return false;
+}
+
 // Each KOL only forwards to their own group.  No cross-posting fallback.
 // If a delivery fails it is logged; no message is ever redirected to
 // another KOL's Feishu group.
 
 async function postFeishuTextToRoute(route, card) {
+  // Prefer chat_id (API) over webhook
+  if (route?.feishuChatId) {
+    return sendFeishuCardViaApi(route.feishuChatId, card);
+  }
   if (!route?.feishuWebhookUrl) return false;
   return postToFeishu(route.feishuWebhookUrl, card, route.feishuSignSecret);
 }
 
 async function forwardFeishuImageToRoute(route, image) {
+  // Prefer chat_id (API) over webhook
+  if (route?.feishuChatId) {
+    return forwardImageToFeishuChat(route.feishuChatId, image);
+  }
   if (!route?.feishuWebhookUrl || !image) return false;
   return forwardImageToFeishu(route.feishuWebhookUrl, image, route.feishuSignSecret);
 }
@@ -835,7 +984,7 @@ export class KolScraper {
   constructor({ routes = [], pollSec = POLL_INTERVAL_SEC } = {}) {
     this.routes = routes;
     this.activeRoutes = routes.filter(
-      (r) => r.authorName && (r.discordWebhookUrl || r.feishuWebhookUrl),
+      (r) => r.authorName && (r.discordWebhookUrl || r.feishuWebhookUrl || r.feishuChatId),
     );
     this.pollSec = pollSec;
     this.sseClient = null;
@@ -917,6 +1066,7 @@ export class KolScraper {
     const rawText = extractCleanableText(msg);
     const cleaned = rawText ? sanitizeForwardText(rawText) : "";
     const images = getMessageImages(msg);
+    const hasFeishu = Boolean(route.feishuWebhookUrl || route.feishuChatId);
 
     // 1. Post text to Discord
     if (route.discordWebhookUrl && cleaned) {
@@ -934,7 +1084,7 @@ export class KolScraper {
           if (ok) this.stats.discordImageSent++;
           else this.stats.failures++;
         }
-        if (route.feishuWebhookUrl) {
+        if (hasFeishu) {
           const ok = await forwardFeishuImageToRoute(route, image);
           if (ok) this.stats.feishuImageSent++;
           else this.stats.failures++;
@@ -943,7 +1093,7 @@ export class KolScraper {
     }
 
     // 3. Post to Feishu
-    if (route.feishuWebhookUrl) {
+    if (hasFeishu) {
       const card = {
         title: `KOL转发｜${label}`,
         content: cleaned || "(无正文)",
@@ -954,8 +1104,9 @@ export class KolScraper {
       else this.stats.failures++;
     }
 
+    const feishuLabel = route.feishuChatId ? `chat:✓` : route.feishuWebhookUrl ? "✓" : "✗";
     const imgTag = images.length ? ` +${images.length}📎` : "";
-    console.log(`[kol] ${label} → discord:${route.discordWebhookUrl ? "✓" : "✗"} feishu:${route.feishuWebhookUrl ? "✓" : "✗"}${imgTag}`);
+    console.log(`[kol] ${label} → discord:${route.discordWebhookUrl ? "✓" : "✗"} feishu:${feishuLabel}${imgTag}`);
   }
 
   async pollOnce() {
@@ -1172,10 +1323,15 @@ export class KolScraper {
         entry.messageId = msg.message_id || "";
         const rawText = extractCleanableText(msg);
         const cleaned = rawText ? sanitizeForwardText(rawText) : "";
-        const images = getMessageImages(msg);
+
+        // Also look for the most recent message with attachments (images)
+        const imageMsg = messages.find((m) => m.attachments?.length) || msg;
+        const images = getMessageImages(imageMsg);
+
+        const hasFeishu = Boolean(route.feishuWebhookUrl || route.feishuChatId);
 
         // ── Feishu text ──
-        if (sendFeishu && route.feishuWebhookUrl && cleaned) {
+        if (sendFeishu && hasFeishu && cleaned) {
           const card = {
             title: `KOL转发｜${route.authorName}`,
             content: cleaned,
@@ -1183,14 +1339,14 @@ export class KolScraper {
           };
           const ok = await postFeishuTextToRoute(route, card);
           entry.feishuText = ok ? "ok" : "failed";
-        } else if (sendFeishu && !route.feishuWebhookUrl) {
-          entry.feishuText = "no webhook";
+        } else if (sendFeishu && !hasFeishu) {
+          entry.feishuText = "no feishu target";
         } else if (sendFeishu && !cleaned) {
           entry.feishuText = "no text";
         }
 
         // ── Feishu images ──
-        if (sendFeishu && route.feishuWebhookUrl && images.length) {
+        if (sendFeishu && hasFeishu && images.length) {
           const imgOut = [];
           for (const image of images) {
             const ok = await forwardFeishuImageToRoute(route, image);

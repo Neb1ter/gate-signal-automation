@@ -135,6 +135,7 @@ export const config = {
         kolChannelId: "1444964071979089990",
         feishuWebhookUrl: process.env.KOL_CHENGE_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_CHENGE_FEISHU_SIGN_SECRET || "",
+        feishuChatId: process.env.KOL_CHENGE_FEISHU_CHAT_ID || "",
         discordWebhookUrl: process.env.KOL_CHENGE_DISCORD_WEBHOOK_URL || "",
       },
       {
@@ -142,6 +143,7 @@ export const config = {
         kolChannelId: "1444963929393729686",
         feishuWebhookUrl: process.env.KOL_FENGGE_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_FENGGE_FEISHU_SIGN_SECRET || "",
+        feishuChatId: process.env.KOL_FENGGE_FEISHU_CHAT_ID || "",
         discordWebhookUrl: process.env.KOL_FENGGE_DISCORD_WEBHOOK_URL || "",
       },
       {
@@ -149,6 +151,7 @@ export const config = {
         kolChannelId: "1320436859477819433",
         feishuWebhookUrl: process.env.KOL_TIAFEILUO_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_TIAFEILUO_FEISHU_SIGN_SECRET || "",
+        feishuChatId: process.env.KOL_TIAFEILUO_FEISHU_CHAT_ID || "",
         discordWebhookUrl: process.env.KOL_TIAFEILUO_DISCORD_WEBHOOK_URL || "",
       },
       {
@@ -156,6 +159,7 @@ export const config = {
         kolChannelId: "1444962339743989843",
         feishuWebhookUrl: process.env.KOL_DABIAOKE_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_DABIAOKE_FEISHU_SIGN_SECRET || "",
+        feishuChatId: process.env.KOL_DABIAOKE_FEISHU_CHAT_ID || "",
         discordWebhookUrl: process.env.KOL_DABIAOKE_DISCORD_WEBHOOK_URL || "",
       },
       {
@@ -163,6 +167,7 @@ export const config = {
         kolChannelId: "1418888601340481607",
         feishuWebhookUrl: process.env.KOL_LINGXIAERDU_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_LINGXIAERDU_FEISHU_SIGN_SECRET || "",
+        feishuChatId: process.env.KOL_LINGXIAERDU_FEISHU_CHAT_ID || "",
         discordWebhookUrl:
           process.env.KOL_LINGXIAERDU_DISCORD_WEBHOOK_URL ||
           process.env.DISCORD_KOL_WEBHOOK_URL ||
@@ -173,6 +178,7 @@ export const config = {
         kolChannelId: "1444962410002911396",
         feishuWebhookUrl: process.env.KOL_FEIYANGVIP_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_FEIYANGVIP_FEISHU_SIGN_SECRET || "",
+        feishuChatId: process.env.KOL_FEIYANGVIP_FEISHU_CHAT_ID || "",
         discordWebhookUrl:
           process.env.KOL_FEIYANGVIP_DISCORD_WEBHOOK_URL ||
           process.env.DISCORD_KOL_WEBHOOK_URL ||
@@ -183,6 +189,7 @@ export const config = {
         kolChannelId: "1464406516282167448",
         feishuWebhookUrl: process.env.KOL_XIANG_METALS_FEISHU_WEBHOOK_URL || "",
         feishuSignSecret: process.env.KOL_XIANG_METALS_FEISHU_SIGN_SECRET || "",
+        feishuChatId: process.env.KOL_XIANG_METALS_FEISHU_CHAT_ID || "",
         discordWebhookUrl:
           process.env.KOL_XIANG_METALS_DISCORD_WEBHOOK_URL ||
           process.env.DISCORD_KOL_WEBHOOK_URL ||
