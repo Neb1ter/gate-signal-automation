@@ -174,6 +174,10 @@ function isDuplicate(key) {
   return false;
 }
 
+function forgetDuplicate(key) {
+  if (key) seenSignals.delete(key);
+}
+
 function buildDedupKey(signal) {
   const msgId = signal.message_id || "";
   const symbol = signal.symbol || "";
@@ -1080,6 +1084,7 @@ export class KolScraper {
       failures: 0,
     };
     this.lastDeliveries = new Map();
+    this.deliveryAcks = new Set();
   }
 
   loadLastSeen() {
@@ -1136,7 +1141,7 @@ export class KolScraper {
   async routeAndSend(msg, route) {
     if (!route) {
       console.warn("[kol] Message skipped: no route");
-      return;
+      return false;
     }
     const label = route.authorName;
     const rawText = extractCleanableText(msg);
@@ -1153,15 +1158,26 @@ export class KolScraper {
       discordImages: images.length ? "pending" : "no attachments",
       feishuText: hasFeishu ? "pending" : "no target",
       feishuImages: images.length ? "pending" : "no attachments",
+      ok: false,
     };
+    const deliveryKey = `${route.kolChannelId || label}:${delivery.messageId || buildDedupKey(msg)}`;
 
     // 1. Post text to Discord
     if (route.discordWebhookUrl && cleaned) {
-      const content = `**【KOL转发｜${label}】**\n\n${cleaned}`;
-      const ok = await postToDiscord(route.discordWebhookUrl, content);
-      delivery.discordText = ok ? "ok" : "failed";
-      if (ok) this.stats.discordSent++;
-      else this.stats.failures++;
+      const ackKey = `${deliveryKey}:discordText`;
+      if (this.deliveryAcks.has(ackKey)) {
+        delivery.discordText = "ok";
+      } else {
+        const content = `**【KOL转发｜${label}】**\n\n${cleaned}`;
+        const ok = await postToDiscord(route.discordWebhookUrl, content);
+        delivery.discordText = ok ? "ok" : "failed";
+        if (ok) {
+          this.deliveryAcks.add(ackKey);
+          this.stats.discordSent++;
+        } else {
+          this.stats.failures++;
+        }
+      }
     }
 
     // 2. Post images
@@ -1170,22 +1186,35 @@ export class KolScraper {
       let discordImageFailed = 0;
       let feishuImageOk = 0;
       let feishuImageFailed = 0;
-      for (const image of images) {
+      for (const [index, image] of images.entries()) {
+        const imageId = image.key || image.urls?.[0] || String(index);
         if (route.discordWebhookUrl) {
-          const ok = await forwardImageToDiscord(route.discordWebhookUrl, image);
+          const ackKey = `${deliveryKey}:discordImage:${imageId}`;
+          const ok = this.deliveryAcks.has(ackKey)
+            ? true
+            : await forwardImageToDiscord(route.discordWebhookUrl, image);
           if (ok) {
             discordImageOk++;
-            this.stats.discordImageSent++;
+            if (!this.deliveryAcks.has(ackKey)) {
+              this.deliveryAcks.add(ackKey);
+              this.stats.discordImageSent++;
+            }
           } else {
             discordImageFailed++;
             this.stats.failures++;
           }
         }
         if (hasFeishu) {
-          const ok = await forwardFeishuImageToRoute(route, image);
+          const ackKey = `${deliveryKey}:feishuImage:${imageId}`;
+          const ok = this.deliveryAcks.has(ackKey)
+            ? true
+            : await forwardFeishuImageToRoute(route, image);
           if (ok) {
             feishuImageOk++;
-            this.stats.feishuImageSent++;
+            if (!this.deliveryAcks.has(ackKey)) {
+              this.deliveryAcks.add(ackKey);
+              this.stats.feishuImageSent++;
+            }
           } else {
             feishuImageFailed++;
             this.stats.failures++;
@@ -1202,21 +1231,38 @@ export class KolScraper {
 
     // 3. Post to Feishu
     if (hasFeishu) {
-      const card = {
-        title: `KOL转发｜${label}`,
-        content: cleaned || "(无正文)",
-        channel: msg.channel_name || "",
-      };
-      const ok = await postFeishuTextToRoute(route, card);
-      delivery.feishuText = ok ? "ok" : "failed";
-      if (ok) this.stats.feishuSent++;
-      else this.stats.failures++;
+      const ackKey = `${deliveryKey}:feishuText`;
+      if (this.deliveryAcks.has(ackKey)) {
+        delivery.feishuText = "ok";
+      } else {
+        const card = {
+          title: `KOL转发｜${label}`,
+          content: cleaned || "(无正文)",
+          channel: msg.channel_name || "",
+        };
+        const ok = await postFeishuTextToRoute(route, card);
+        delivery.feishuText = ok ? "ok" : "failed";
+        if (ok) {
+          this.deliveryAcks.add(ackKey);
+          this.stats.feishuSent++;
+        } else {
+          this.stats.failures++;
+        }
+      }
     }
 
+    const statuses = [
+      delivery.discordText,
+      delivery.discordImages,
+      delivery.feishuText,
+      delivery.feishuImages,
+    ];
+    delivery.ok = statuses.every((status) => !String(status).includes("failed") && status !== "pending");
     this.lastDeliveries.set(label, delivery);
     const feishuLabel = route.feishuChatId ? `chat:✓` : route.feishuWebhookUrl ? "✓" : "✗";
     const imgTag = images.length ? ` +${images.length}📎` : "";
     console.log(`[kol] ${label} → discord:${route.discordWebhookUrl ? "✓" : "✗"} feishu:${feishuLabel}${imgTag}`);
+    return delivery.ok;
   }
 
   async pollOnce() {
@@ -1244,7 +1290,12 @@ export class KolScraper {
             const dedupKey = `raw_${msgId}`;
             if (isDuplicate(dedupKey)) continue;
 
-            await this.routeAndSend(msg, route);
+            const delivered = await this.routeAndSend(msg, route);
+            if (!delivered) {
+              forgetDuplicate(dedupKey);
+              console.warn(`[kol] ${route.authorName} message ${msgId} not fully delivered; will retry`);
+              break;
+            }
             this._lastSeen.set(lastSeenKey, msgId);
             this.saveLastSeen();
             newCount++;
