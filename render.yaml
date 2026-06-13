@@ -103,3 +103,21 @@ services:
         sync: false
       - key: KOL_DABIAOKE_DISCORD_WEBHOOK_URL
         value: "https://discord.com/api/webhooks/1514554326918627329/kd47JIAQYtTH1NZ0WOKGCOfpgIOX4G7NTfN4XceUAEd943wnbvek9SaKhdeu9ZYHPj9w"
+      - key: KOL_LINGXIAERDU_FEISHU_WEBHOOK_URL
+        sync: false
+      - key: KOL_LINGXIAERDU_FEISHU_SIGN_SECRET
+        sync: false
+      - key: KOL_LINGXIAERDU_DISCORD_WEBHOOK_URL
+        sync: false
+      - key: KOL_FEIYANGVIP_FEISHU_WEBHOOK_URL
+        sync: false
+      - key: KOL_FEIYANGVIP_FEISHU_SIGN_SECRET
+        sync: false
+      - key: KOL_FEIYANGVIP_DISCORD_WEBHOOK_URL
+        sync: false
+      - key: KOL_XIANG_METALS_FEISHU_WEBHOOK_URL
+        sync: false
+      - key: KOL_XIANG_METALS_FEISHU_SIGN_SECRET
+        sync: false
+      - key: KOL_XIANG_METALS_DISCORD_WEBHOOK_URL
+        sync: false
