@@ -1079,6 +1079,7 @@ export class KolScraper {
       feishuImageSent: 0,
       failures: 0,
     };
+    this.lastDeliveries = new Map();
   }
 
   loadLastSeen() {
@@ -1142,29 +1143,61 @@ export class KolScraper {
     const cleaned = rawText ? sanitizeForwardText(rawText) : "";
     const images = getMessageImages(msg);
     const hasFeishu = Boolean(route.feishuWebhookUrl || route.feishuChatId);
+    const delivery = {
+      at: new Date().toISOString(),
+      authorName: label,
+      messageId: msg.message_id || msg.id || "",
+      hasText: Boolean(cleaned),
+      images: images.length,
+      discordText: route.discordWebhookUrl ? (cleaned ? "pending" : "no text") : "no target",
+      discordImages: images.length ? "pending" : "no attachments",
+      feishuText: hasFeishu ? "pending" : "no target",
+      feishuImages: images.length ? "pending" : "no attachments",
+    };
 
     // 1. Post text to Discord
     if (route.discordWebhookUrl && cleaned) {
       const content = `**【KOL转发｜${label}】**\n\n${cleaned}`;
       const ok = await postToDiscord(route.discordWebhookUrl, content);
+      delivery.discordText = ok ? "ok" : "failed";
       if (ok) this.stats.discordSent++;
       else this.stats.failures++;
     }
 
     // 2. Post images
     if (images.length) {
+      let discordImageOk = 0;
+      let discordImageFailed = 0;
+      let feishuImageOk = 0;
+      let feishuImageFailed = 0;
       for (const image of images) {
         if (route.discordWebhookUrl) {
           const ok = await forwardImageToDiscord(route.discordWebhookUrl, image);
-          if (ok) this.stats.discordImageSent++;
-          else this.stats.failures++;
+          if (ok) {
+            discordImageOk++;
+            this.stats.discordImageSent++;
+          } else {
+            discordImageFailed++;
+            this.stats.failures++;
+          }
         }
         if (hasFeishu) {
           const ok = await forwardFeishuImageToRoute(route, image);
-          if (ok) this.stats.feishuImageSent++;
-          else this.stats.failures++;
+          if (ok) {
+            feishuImageOk++;
+            this.stats.feishuImageSent++;
+          } else {
+            feishuImageFailed++;
+            this.stats.failures++;
+          }
         }
       }
+      delivery.discordImages = route.discordWebhookUrl
+        ? `${discordImageOk}/${images.length}${discordImageFailed ? " failed" : ""}`
+        : "no target";
+      delivery.feishuImages = hasFeishu
+        ? `${feishuImageOk}/${images.length}${feishuImageFailed ? " failed" : ""}`
+        : "no target";
     }
 
     // 3. Post to Feishu
@@ -1175,10 +1208,12 @@ export class KolScraper {
         channel: msg.channel_name || "",
       };
       const ok = await postFeishuTextToRoute(route, card);
+      delivery.feishuText = ok ? "ok" : "failed";
       if (ok) this.stats.feishuSent++;
       else this.stats.failures++;
     }
 
+    this.lastDeliveries.set(label, delivery);
     const feishuLabel = route.feishuChatId ? `chat:✓` : route.feishuWebhookUrl ? "✓" : "✗";
     const imgTag = images.length ? ` +${images.length}📎` : "";
     console.log(`[kol] ${label} → discord:${route.discordWebhookUrl ? "✓" : "✗"} feishu:${feishuLabel}${imgTag}`);
@@ -1324,6 +1359,7 @@ export class KolScraper {
       mode: this.mode,
       routesCount: this.activeRoutes.length,
       feishuImageMode: canUploadFeishuImages() ? "upload" : "link",
+      lastDeliveries: Array.from(this.lastDeliveries.values()).slice(-20),
     };
   }
 
