@@ -108,16 +108,16 @@ services:
       - key: KOL_LINGXIAERDU_FEISHU_SIGN_SECRET
         sync: false
       - key: KOL_LINGXIAERDU_DISCORD_WEBHOOK_URL
-        sync: false
+        value: "https://discord.com/api/webhooks/1515264320928354384/XHvGsOOKuCoIJ8wolIQiEUIKghefIdZOWYVHmT8vvR7btncgyazxvYWmsoSbkF6RW2iA"
       - key: KOL_FEIYANGVIP_FEISHU_WEBHOOK_URL
         sync: false
       - key: KOL_FEIYANGVIP_FEISHU_SIGN_SECRET
         sync: false
       - key: KOL_FEIYANGVIP_DISCORD_WEBHOOK_URL
-        sync: false
+        value: "https://discord.com/api/webhooks/1515264326062309406/8vkNHKhl5Ewa_L_yEubbvRC5URXGwiu2xDrld-qRgywiY5crVVgUFaQYsoG0_Z6aF1H2"
       - key: KOL_XIANG_METALS_FEISHU_WEBHOOK_URL
         sync: false
       - key: KOL_XIANG_METALS_FEISHU_SIGN_SECRET
         sync: false
       - key: KOL_XIANG_METALS_DISCORD_WEBHOOK_URL
-        sync: false
+        value: "https://discord.com/api/webhooks/1515264330629775594/Zerhbs3F91W2qPA7f77QF1zzteH78u-8P8yTn589kLp8h7XDKT4zauQswHwFKvkBX2v4"
